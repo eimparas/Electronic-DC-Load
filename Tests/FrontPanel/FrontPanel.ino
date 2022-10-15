@@ -13,8 +13,8 @@ LiquidCrystal_I2C lcd(LCDaddr, 16, 2);
 //#define mux
 //#define StartStopButtons
 
-bool n;
-bool encoderPinALast;
+int n;
+int encoderPinALast;
 double EncoderLowLim = 00.00;
 double EncoderHighLim = 20.00;
 double EncoderPos = 00.00;
@@ -26,14 +26,13 @@ bool   writeState = LOW;
 void setup() {
 	lcd.init();                      // initialize the lcd 
 	lcd.clear();
-	lcd.createChar(0, R);
-	lcd.createChar(1, V);
-	lcd.createChar(4, V2);
-	lcd.createChar(2, I);
-	lcd.createChar(3, C);
+	//lcd.createChar(0, R);
+	//lcd.createChar(1, V);
+	//lcd.createChar(4, V2);
+	//lcd.createChar(2, I);
+	//lcd.createChar(3, C);
 	lcd.setCursor(0, 0);	
-	lcd.backlight();
-
+	lcd.backlight();	
 #ifdef DEBUG
 	Serial.begin(9600);
 	Serial.println("ImHere");
@@ -47,9 +46,8 @@ void setup() {
 	pinMode(EncA, INPUT_PULLUP);
 	pinMode(EncB, INPUT_PULLUP);
 	pinMode(EncBTN, INPUT_PULLUP);
-	attachInterrupt(digitalPinToInterrupt(EncA), EncoderISR, FALLING);
-	//attachInterrupt(digitalPinToInterrupt(EncB), EncoderISR, FALLING);
-	//attachInterrupt(digitalPinToInterrupt(EncB), encoderButtonISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(EncA), EncoderISR, CHANGE);
+	//attachInterrupt(digitalPinToInterrupt(EncB), EncoderISR, FALLING);	
 	attachPinChangeInterrupt(digitalPinToPCINT(EncBTN), encoderButtonISR, FALLING);
 
 #endif // encoderConnected
@@ -79,17 +77,9 @@ void setup() {
 }
 
 void loop() {
-	/*lcd.setCursor(14,1);
-	lcd.print("CV");
-	delay(5000);
-	lcd.setCursor(15, 1);
-	lcd.write(1);
-	delay(5000);
-	lcd.setCursor(15, 1);
-	lcd.write(4);
-	delay(5000);*/
 	delay(500);
-	
+	lcd.setCursor(0, 0);
+	lcd.print(EncoderPos);
 }
 
 void drawLCD() {
@@ -102,33 +92,30 @@ void drawLCD() {
 
 void EncoderISR() {
 	n = digitalRead(EncA);
+	
 	if ((encoderPinALast == LOW) && (n == HIGH)) {
 		if (digitalRead(EncB) == LOW) {
 			if (EncoderPos > EncoderLowLim) {
-				EncoderPos--;
+				EncoderPos++;
+				//Serial.println("CW");
 			}
 		}
 		else {
 			if (EncoderPos < EncoderHighLim) {
-				EncoderPos++;
+				EncoderPos--;
+				//Serial.println("CCW");
 			}
 		}		
 	}
 	encoderPinALast = n;
-
-	if (writeState==true) {
-		ConstantCurrent = EncoderPos;
-		
-	}
-
-	Serial.print(EncoderPos);
-	Serial.print("|");
-	Serial.println(ConstantCurrent);
+	Serial.println(EncoderPos);
+	//Serial.print("|");	
 }
 void encoderButtonISR() {
 		writeState = !writeState;
 		if (writeState == true)
 		{
+			ConstantCurrent = EncoderPos;
 			//Set LCD to inverted char
 		}
 
