@@ -58,6 +58,7 @@ byte V2[] = {
   B11111
 };//Noice
 
+
 ///
 //Pins definitions , Use same names on schematics.
 ///
@@ -65,21 +66,28 @@ byte V2[] = {
 //encoder
 #define EncA 2
 #define EncB 3
-#define EncBTN 4
-//FanControl
-#define Fan_PWM 5
-//modeButtons
-#define CVbtn 6
-#define CCbtn 7
-#define CPbtn 8
-#define CRbtn 9
+#define EncBTN A3
+
 //StartStopButtons
-#define StartBtn 10
-#define StopBtn 11
-//Mux for shunts
-#define Mux_A0 A0
-#define Mux_A1 A1
-#define Mux_A2 A2
+#define StopBtn 4
+#define StartBtn 6
+
+//SCPI ethernet SPI cs
+#define ETH_CS 5
+
+
+
+//modeButtons
+#define CVbtn 10
+#define CCbtn 9
+#define CPbtn 8
+#define CRbtn 7
+#define BATbtn A2
+
+//SettingsSW
+#define settingsSW A1
 
 //LM35 HeatSink temperature Sensor
-#define Temp A6
+#define Temp0 A0
+#define Temp1 A6
+#define Temp2 A7

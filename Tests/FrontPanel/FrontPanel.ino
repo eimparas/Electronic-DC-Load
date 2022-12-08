@@ -5,13 +5,11 @@
 #include <LiquidCrystal_I2C.h>
 #include "pinout.h"
 
-LiquidCrystal_I2C lcd(LCDaddr, 16, 2);
+LiquidCrystal_I2C lcd(LCDaddr, 20, 4);
 #define encoderConnected
 #define DEBUG
-//#define fanControl
-//#define modeButtons
-//#define mux
-//#define StartStopButtons
+#define modeButtons
+#define StartStopButtons
 
 int n;
 int encoderPinALast;
@@ -26,13 +24,14 @@ bool   writeState = LOW;
 void setup() {
 	lcd.init();                      // initialize the lcd 
 	lcd.clear();
-	//lcd.createChar(0, R);
-	//lcd.createChar(1, V);
-	//lcd.createChar(4, V2);
-	//lcd.createChar(2, I);
-	//lcd.createChar(3, C);
+	lcd.createChar(0, R);
+	lcd.createChar(1, V);
+	lcd.createChar(4, V2);
+	lcd.createChar(2, I);
+	lcd.createChar(3, C);
 	lcd.setCursor(0, 0);	
 	lcd.backlight();	
+	drawLCD();
 #ifdef DEBUG
 	Serial.begin(9600);
 	Serial.println("ImHere");
@@ -47,69 +46,126 @@ void setup() {
 	pinMode(EncB, INPUT_PULLUP);
 	pinMode(EncBTN, INPUT_PULLUP);
 	attachInterrupt(digitalPinToInterrupt(EncA), EncoderISR, CHANGE);
-	//attachInterrupt(digitalPinToInterrupt(EncB), EncoderISR, FALLING);	
+	attachInterrupt(digitalPinToInterrupt(EncB), EncoderISR, CHANGE);
 	attachPinChangeInterrupt(digitalPinToPCINT(EncBTN), encoderButtonISR, FALLING);
 
 #endif // encoderConnected
 
-#ifdef fanControl
-	pinMode(Fan_PWM, OUTPUT);
-#endif // fanControl
 
 #ifdef modeButtons
 	pinMode(CVbtn, INPUT_PULLUP);
 	pinMode(CCbtn, INPUT_PULLUP);
 	pinMode(CPbtn, INPUT_PULLUP);
 	pinMode(CRbtn, INPUT_PULLUP);
+
+	attachPinChangeInterrupt(digitalPinToPCINT(CVbtn), CVbuttonISR, FALLING);
+	attachPinChangeInterrupt(digitalPinToPCINT(CCbtn), CCbuttonISR, FALLING);
+	attachPinChangeInterrupt(digitalPinToPCINT(CPbtn), CPbuttonISR, FALLING);
+	attachPinChangeInterrupt(digitalPinToPCINT(CRbtn), CRbuttonISR, FALLING);
+	attachPinChangeInterrupt(digitalPinToPCINT(BATbtn), batteryISR, FALLING);
 #endif //modeButtons
 
 #ifdef StartStopButtons
 	pinMode(StartBtn, INPUT_PULLUP);
 	pinMode(StopBtn, INPUT_PULLUP);
+	pinMode(settingsSW, INPUT_PULLUP);
+	attachPinChangeInterrupt(digitalPinToPCINT(StartBtn), startButtonISR, FALLING);
+	attachPinChangeInterrupt(digitalPinToPCINT(StopBtn), stopButtonISR, FALLING);
+	attachPinChangeInterrupt(digitalPinToPCINT(settingsSW), settingsISR, FALLING);
 #endif //StartStopButtons
 
-#ifdef mux
-	pinMode(Mux_A0, OUTPUT);
-	pinMode(Mux_A1, OUTPUT);
-	pinMode(Mux_A2, OUTPUT);
-#endif // mux
+
 
 }
 
 void loop() {
 	delay(500);
 	lcd.setCursor(0, 0);
-	lcd.print(EncoderPos);
+	lcd.print(EncoderPos,3);
+	
+	if (writeState) {
+		clearLCD();
+		writeState = 0;
+	}
 }
 
 void drawLCD() {
-	lcd.print("00.000V|000.000W");//15
-	lcd.setCursor(0, 1);
-	lcd.print("00.000A|00.000");//18! (0W)
+	//lcd.print("00.000V|000.000W");//15
+	//lcd.setCursor(0, 1);
+	//lcd.print("00.000A|00.000");//18! (0W)
 	//lcd.write(3);
 	//lcd.write(0);
+	lcd.setCursor(6, 0);
+	lcd.print("V|");
+	lcd.setCursor(6, 1);
+	lcd.print("A|");
+	lcd.setCursor(6, 2);
+	lcd.print("W|");
+	lcd.setCursor(6, 3);
+	lcd.print("R|");
+	lcd.setCursor(14, 0);
+	lcd.write(0);
+	lcd.setCursor(14, 1);
+	lcd.write(1);
+	lcd.setCursor(14, 2);
+	lcd.write(2);
+	lcd.setCursor(14, 3);
+	lcd.write(3);
+}
+
+void clearLCD() {
+	lcd.setCursor(0, 0);
+	lcd.print("      ");
+	lcd.setCursor(0, 1);
+	lcd.print("      ");
+	lcd.setCursor(0, 2);
+	lcd.print("      ");
+	lcd.setCursor(0, 3);
+	lcd.print("      ");
+	lcd.setCursor(8, 0);
+	lcd.print("      ");
+	lcd.setCursor(8, 1);
+	lcd.print("      ");
+	lcd.setCursor(8, 2);
+	lcd.print("      ");
+	lcd.setCursor(8, 3);
+	lcd.print("      ");
+	lcd.write(3);
 }
 
 void EncoderISR() {
-	n = digitalRead(EncA);
-	
+	/*n = digitalRead(EncA);	
 	if ((encoderPinALast == LOW) && (n == HIGH)) {
 		if (digitalRead(EncB) == LOW) {
 			if (EncoderPos > EncoderLowLim) {
 				EncoderPos++;
-				//Serial.println("CW");
+				Serial.println("CW");
 			}
 		}
 		else {
 			if (EncoderPos < EncoderHighLim) {
 				EncoderPos--;
-				//Serial.println("CCW");
+				Serial.println("CCW");
 			}
 		}		
+	}*/
+	
+	n = digitalRead(EncA);
+	if ((encoderPinALast == LOW) && (n == HIGH)) {
+		if (digitalRead(EncB) == LOW) {
+			if (EncoderPos > 0) {
+				EncoderPos = EncoderPos - 10;
+			}
+		}
+		else {
+			if (EncoderPos < 400) {
+				EncoderPos = EncoderPos + 10;
+			}
+		}
+		
 	}
 	encoderPinALast = n;
 	Serial.println(EncoderPos);
-	//Serial.print("|");	
 }
 void encoderButtonISR() {
 		writeState = !writeState;
@@ -124,4 +180,36 @@ void encoderButtonISR() {
 			//set LCD to regular char
 		}
 	Serial.println(writeState);
+	
+}
+
+void CVbuttonISR() {
+	Serial.println("CV");
+}
+
+void CCbuttonISR() {
+	Serial.println("CC");
+}
+
+void CPbuttonISR() {
+	Serial.println("CP");
+}
+
+void CRbuttonISR() {
+	Serial.println("CR");
+}
+
+void startButtonISR() {
+	Serial.println("Start");
+}
+void stopButtonISR() {
+	Serial.println("Stop");
+}
+
+void settingsISR() {
+	Serial.println("SET");
+}
+
+void batteryISR() {
+	Serial.println("BAT");
 }
