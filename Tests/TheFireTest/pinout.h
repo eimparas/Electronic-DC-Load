@@ -95,4 +95,14 @@ byte V2[] = {
 //LM35 HeatSink temperature Sensor
 #define Temp0 A0
 #define Temp1 A6
-#define Temp2 A7
+#define Temp2 A7//Mosfet
+
+///
+// Component Constants , Use same Names on schematics
+///
+
+
+//Voltage Divider Restistor Values
+#define R11 68000
+#define R12 10000
+#define R2 10000
