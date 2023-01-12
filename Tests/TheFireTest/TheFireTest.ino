@@ -29,22 +29,26 @@ bool encoderButtonState =false;
 bool CVbuttonState = false;
 
 
-float f = 0;
+float ADCVoltageFactor = 0;
 
-float _A0 = 0.0;
-float _A1 = 0.0;
-float _A2 = 0.0;
-float _A3 = 0.0;
-
-float VoltInternal = 0.0;
-float VoltExternal = 0.0;
 float Current = 0.0;
 float ACS1_A = 0.0;
 float ACS2_A = 0.0;
-float ACS1_offset = 2.22;
-float ACS2_offset = 2.22;
-float acs1AscR = 0.0;
-float acs2AscR = 0.0;
+float ACS1_offset = 2.47;
+float ACS2_offset = 2.47;
+float acs1Raw = 0.0;
+float acs2Raw = 0.0;
+
+
+float VoltInternal = 0.0;
+float VoltInternalRaw = 0.0;
+float VoltExternal = 0.0;
+float VoltExternalRaw = 0.0;
+
+
+
+float PowerExternal = 0.0;
+float RLoad = 0.0;
 
 void setup() {
 #ifdef DEBUG
@@ -62,22 +66,19 @@ void setup() {
     if (MCP2.begin() == false)
     {
         Serial.println("Could not init DAC2");
-    }
-    /// <summary>
-    /// DAC INIT 
-    /// </summary>
+    }    
+    // DAC INIT 
+    
 
     ADS.begin();
     if (!ADS.isConnected()) {
-        Serial.println("ADS1115 not presant on bus , at expected Addr 0x48");
+        Serial.println("ADS1115 not presant on bus");
     }
     Serial.println("ADS connected on bus,at expected Addr 0x48");
-    f = ADS.toVoltage();
-    Serial.print("the conversion factor is : ");
-    Serial.print(f, 5);
-    /// <summary>
-    /// ADC init
-    /// </summary>
+	ADCVoltageFactor = ADS.toVoltage();
+	Serial.print("the ADC Voltage factor is : ");
+    Serial.print(ADCVoltageFactor, 5);
+    // ADC init
     
 //============================================================
 //LCD 
@@ -94,9 +95,8 @@ void setup() {
     lcd.backlight();
 	drawLCD();
 
-    ///<summary>
-    /// LCD Init
-    /// </summary>
+    // LCD Init
+	
 
 //============================================================
 //Keyboard
@@ -111,15 +111,13 @@ void setup() {
     attachPinChangeInterrupt(digitalPinToPCINT(EncBTN), encoderButtonISR, FALLING);
 
 #endif // encoderConnected
-    ///<summary>
-    /// Rottery Encoder
-   /// </summary>
+    // Rottery Encoder
+
 #ifdef modeButtons
     pinMode(CVbtn, INPUT_PULLUP);
     pinMode(CCbtn, INPUT_PULLUP);
     pinMode(CPbtn, INPUT_PULLUP);
     pinMode(CRbtn, INPUT_PULLUP);
-
     attachPinChangeInterrupt(digitalPinToPCINT(CVbtn), CVbuttonISR, FALLING);
     attachPinChangeInterrupt(digitalPinToPCINT(CCbtn), CCbuttonISR, FALLING);
     attachPinChangeInterrupt(digitalPinToPCINT(CPbtn), CPbuttonISR, FALLING);
@@ -151,19 +149,22 @@ void loop() {
 		CVbuttonState = false;
 		MCP2.setValue(EncoderPos);
 	}
-	_A0 = ADS.readADC(0);
-	_A1 = ADS.readADC(1);
 	
-
-	VoltExternal = _A0 * f;
-	VoltInternal = _A1 * f;
 
 	
 	readCurrent();
-
-	Serial.print(acs1AscR);
+	readVoltage();
+	CalcPower();
+	CalcResistance();
+	Serial.print(readTemp(Temp0));
 	Serial.print(",");
-	Serial.print(acs2AscR);
+	Serial.print(readTemp(Temp1));
+	Serial.print(",");
+	Serial.print(readTemp(Temp2));
+	Serial.print(",");
+	Serial.print(acs1Raw);
+	Serial.print(",");
+	Serial.print(acs2Raw);
 	Serial.print(",");
 	Serial.print(ACS1_A);
 	Serial.print(",");
@@ -217,13 +218,13 @@ void clearLCD() {
 
 void updateLCD() {
 	lcd.setCursor(0, 0);
-	lcd.print(VoltInternal,2);
+	lcd.print(VoltExternal,2);
 	lcd.setCursor(0, 1);
 	lcd.print(Current,3);
 	lcd.setCursor(0, 2);
-	lcd.print("      ");
+	lcd.print(PowerExternal);
 	lcd.setCursor(0, 3);
-	lcd.print("      ");
+	lcd.print(RLoad);
 	lcd.setCursor(8, 0);
 	lcd.print("      ");
 	lcd.setCursor(8, 1);
@@ -309,14 +310,42 @@ void batteryISR() {
 //============================================================
 // Support Functions
 //============================================================
+void readVoltage() {
+	float ADCA0 = 0.0;
+	float ADCA1 = 0.0;
+	ADCA0 = ADS.readADC(0);
+	ADCA1 = ADS.readADC(1);
+	VoltExternalRaw = ADCA0 * ADCVoltageFactor;
+	VoltInternalRaw = ADCA1 * ADCVoltageFactor;
+	//Vin=(VoltExternalRaw*(R11+R12+R2)/R2;
+	VoltExternal = (VoltExternalRaw * (R11 + R12 + R2) / R2);
+	VoltInternal = (VoltInternalRaw * (R11 + R12 + R2) / R2);
+}
 
 void readCurrent() {
-	_A2 = ADS.readADC(2);
-	_A3 = ADS.readADC(3);
-	acs1AscR = _A2 * f;
-	acs2AscR = _A3 * f;
+	float ADCA2 = 0.0;
+	float ADCA3 = 0.0;
+	ADCA2 = ADS.readADC(2);
+	ADCA3 = ADS.readADC(3);
+	acs1Raw = ADCA2 * ADCVoltageFactor;
+	acs2Raw = ADCA3 * ADCVoltageFactor;
 	//Current = (AcsOffset – (measured analog reading)) / Sensitivity
-	ACS1_A = (ACS1_offset - acs1AscR) / 66.0;
-	ACS2_A = (ACS2_offset - acs2AscR) / 66.0;
+	ACS1_A = (ACS1_offset - acs1Raw)/0.066;
+	ACS2_A = (ACS2_offset - acs2Raw)/0.066;
 	Current = ACS1_A + ACS2_A;
+}
+
+
+void CalcPower() {
+	PowerExternal = VoltExternal * Current;
+}
+
+void CalcResistance() {
+	RLoad = VoltExternal / Current;
+}
+
+float readTemp(int sensor) {
+	float val = analogRead(sensor);
+	float mv = (val / 1024.0) * 5000;
+	return mv / 10;
 }
