@@ -1,7 +1,3 @@
-#include <PinChangeInterruptSettings.h>
-#include <PinChangeInterruptPins.h>
-#include <PinChangeInterruptBoards.h>
-#include <PinChangeInterrupt.h>
 #include <LiquidCrystal_I2C.h>
 #include "pinout.h"
 
@@ -47,7 +43,7 @@ void setup() {
 	pinMode(EncBTN, INPUT_PULLUP);
 	attachInterrupt(digitalPinToInterrupt(EncA), EncoderISR, CHANGE);
 	attachInterrupt(digitalPinToInterrupt(EncB), EncoderISR, CHANGE);
-	attachPinChangeInterrupt(digitalPinToPCINT(EncBTN), encoderButtonISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(EncBTN), encoderButtonISR, FALLING);
 
 #endif // encoderConnected
 
@@ -58,20 +54,20 @@ void setup() {
 	pinMode(CPbtn, INPUT_PULLUP);
 	pinMode(CRbtn, INPUT_PULLUP);
 
-	attachPinChangeInterrupt(digitalPinToPCINT(CVbtn), CVbuttonISR, FALLING);
-	attachPinChangeInterrupt(digitalPinToPCINT(CCbtn), CCbuttonISR, FALLING);
-	attachPinChangeInterrupt(digitalPinToPCINT(CPbtn), CPbuttonISR, FALLING);
-	attachPinChangeInterrupt(digitalPinToPCINT(CRbtn), CRbuttonISR, FALLING);
-	attachPinChangeInterrupt(digitalPinToPCINT(BATbtn), batteryISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(CVbtn), CVbuttonISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(CCbtn), CCbuttonISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(CPbtn), CPbuttonISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(CRbtn), CRbuttonISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(BATbtn), batteryISR, FALLING);
 #endif //modeButtons
 
 #ifdef StartStopButtons
 	pinMode(StartBtn, INPUT_PULLUP);
 	pinMode(StopBtn, INPUT_PULLUP);
 	pinMode(settingsSW, INPUT_PULLUP);
-	attachPinChangeInterrupt(digitalPinToPCINT(StartBtn), startButtonISR, FALLING);
-	attachPinChangeInterrupt(digitalPinToPCINT(StopBtn), stopButtonISR, FALLING);
-	attachPinChangeInterrupt(digitalPinToPCINT(settingsSW), settingsISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(StartBtn), startButtonISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(StopBtn), stopButtonISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(settingsSW), settingsISR, FALLING);
 #endif //StartStopButtons
 
 
@@ -87,6 +83,7 @@ void loop() {
 		clearLCD();
 		writeState = 0;
 	}
+	Serial.println(EncoderPos);
 }
 
 void drawLCD() {
@@ -133,39 +130,57 @@ void clearLCD() {
 	lcd.write(3);
 }
 
-void EncoderISR() {
-	/*n = digitalRead(EncA);	
-	if ((encoderPinALast == LOW) && (n == HIGH)) {
-		if (digitalRead(EncB) == LOW) {
-			if (EncoderPos > EncoderLowLim) {
-				EncoderPos++;
-				Serial.println("CW");
-			}
+void EncoderISR() {	
+	static uint8_t state = 0;
+	bool printFlag = false;
+	bool CLKstate = digitalRead(EncB);
+	bool DTstate = digitalRead(EncA);
+	switch (state) {
+	case 0:                         // Idle state, encoder not turning
+		if (!CLKstate) {             // Turn clockwise and CLK goes low first
+			state = 1;
 		}
-		else {
-			if (EncoderPos < EncoderHighLim) {
-				EncoderPos--;
-				Serial.println("CCW");
-			}
-		}		
-	}*/
-	
-	n = digitalRead(EncA);
-	if ((encoderPinALast == LOW) && (n == HIGH)) {
-		if (digitalRead(EncB) == LOW) {
-			if (EncoderPos > 0) {
-				EncoderPos = EncoderPos - 10;
-			}
+		else if (!DTstate) {      // Turn anticlockwise and DT goes low first
+			state = 4;
 		}
-		else {
-			if (EncoderPos < 400) {
-				EncoderPos = EncoderPos + 10;
-			}
+		break;
+		// Clockwise rotation
+	case 1:
+		if (!DTstate) {             // Continue clockwise and DT will go low after CLK
+			state = 2;
 		}
-		
+		break;
+	case 2:
+		if (CLKstate) {             // Turn further and CLK will go high first
+			state = 3;
+		}
+		break;
+	case 3:
+		if (CLKstate && DTstate) {  // Both CLK and DT now high as the encoder completes one step clockwise
+			state = 0;
+			++EncoderPos;
+			printFlag = true;
+		}
+		break;
+		// Anticlockwise rotation
+	case 4:                         // As for clockwise but with CLK and DT reversed
+		if (!CLKstate) {
+			state = 5;
+		}
+		break;
+	case 5:
+		if (DTstate) {
+			state = 6;
+		}
+		break;
+	case 6:
+		if (CLKstate && DTstate) {
+			state = 0;
+			--EncoderPos;
+			printFlag = true;
+		}
+		break;
 	}
-	encoderPinALast = n;
-	Serial.println(EncoderPos);
 }
 void encoderButtonISR() {
 		writeState = !writeState;
