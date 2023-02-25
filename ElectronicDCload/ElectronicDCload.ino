@@ -35,7 +35,8 @@ bool encoderButtonState =false;
 bool CVbuttonState = false;
 bool extSense = false;
 bool isRuning = false;
-int mode = 0;//CC CV CP CR
+int mode = 0;//CC default , CC:0, CV:1,CR:2,CP:3
+
 float CVoltageSet = 0.0;
 
 float ADCVoltageFactor = 0;
@@ -68,7 +69,10 @@ void setup() {
 //============================================================
 //DAC & ADC 
 //============================================================
-    if (MCP1.begin() == false)
+	//============
+	/// DAC INIT 
+	//============
+	if (MCP1.begin() == false)
     {
         Serial.println("Could not init DAC1");
     }  
@@ -76,10 +80,10 @@ void setup() {
     {
         Serial.println("Could not init DAC2");
     }
-    //============
-    /// DAC INIT 
-    //============
-
+    
+	//================
+	/// ADC init
+	//=================
     ADS.begin();
     if (!ADS.isConnected()) {
         Serial.println("ADS1115 not presant on bus , at expected Addr 0x48");
@@ -89,27 +93,24 @@ void setup() {
 	Serial.print("the ADC Voltage factor is : ");
     Serial.print(ADCVoltageFactor, 5);
 	
-    //================
-    /// ADC init
-    //=================    
+    
 //============================================================
 //LCD 
 //============================================================
 
     lcd.init();
     lcd.clear();
-    lcd.createChar(0, R);
-    lcd.createChar(1, V);
-    lcd.createChar(4, V2);
-    lcd.createChar(2, I);
-    lcd.createChar(3, C);
+	lcd.createChar(0, C);
+	lcd.createChar(1, V2);
+    lcd.createChar(2, R);
+	lcd.createChar(3, W);          
     lcd.setCursor(0, 0);
     lcd.backlight();
 	drawLCD();
 
-    ///<summary>
-    /// LCD Init
-    /// </summary>
+
+
+
 	delay(1000);
 	calibrateACS();//Calibrate the ACS_Offset after the LCD is fully initialized and in full backlit
 
@@ -150,24 +151,22 @@ void setup() {
 	attachInterrupt(digitalPinToInterrupt(StopBtn), stopButtonISR, FALLING);
 	attachInterrupt(digitalPinToInterrupt(settingsSW), settingsISR, FALLING);
 #endif //StartStopButtons
-
+	
+//=================================
+//SCPI
+//=================================
 	my_instrument.RegisterCommand(F("*IDN?"), &Identify);
 	my_instrument.RegisterCommand(F("SYSTem:ERRor?"), &GetLastEror);
 	my_instrument.SetErrorHandler(&myErrorHandler);
 	//Not setting an error handler will just ignore the errors.
 
-	//Serial.begin(9600);
+	
 	Ethernet.init(5);
-	Ethernet.begin(mac);
-	//  if (ether.begin(sizeof Ethernet::buffer, mac, csPin))
-	//    eth_enabled = ether.staticSetup(ip, gw, dns, mask);
-	//  if (!eth_enabled) ether.powerDown();
+	Ethernet.begin(mac);	
 	server.begin();
 	Serial.print("server is at ");
 	Serial.println(Ethernet.localIP());
-	//=================================
-	//SCPI
-	//================================
+
 
 
     Serial.println("\n end of setup()");
@@ -184,7 +183,7 @@ void loop() {
 		MCP2.setValue(EncoderPos);
 	}
 	
-	readCurrent();
+	/*readCurrent();
 	readVoltage();
 	CalcPower();
 	CalcResistance();
@@ -196,7 +195,7 @@ void loop() {
 	Serial.print(",");
 	Serial.print(ACS2_A);
 	Serial.print(",");
-	Serial.println(Current);
+	Serial.println(Current);*/
 	if (!settingsButtonState) {
 		if (clearScreen) {
 			lcd.clear();
@@ -205,7 +204,6 @@ void loop() {
 		}	
 		
 		updateLCD();
-		//clearLCD();
 	}
 	else {
 		if (clearScreen) {
@@ -220,7 +218,6 @@ void loop() {
 		CVoltageSet = 0;
 	}
 
-	//my_instrument.ProcessInput(Serial, "\n");
 	client = server.available();
 	if (client.connected()) {
 		my_instrument.ProcessInput(client, "\r\n");//Ethercard.h was using \n termination 
@@ -245,8 +242,7 @@ void drawLCD() {
 	lcd.print("R|");
 
 	lcd.setCursor(14, 0);
-	//lcd.print("V");
-	lcd.write(1);
+	lcd.print("V");
 	lcd.setCursor(14, 1);
 	lcd.print("A");
 	lcd.setCursor(14, 2);
@@ -290,7 +286,51 @@ void updateLCD() {
 	lcd.setCursor(8, 2);
 	lcd.print(" ---- ");
 	lcd.setCursor(8, 3);
-	lcd.print(" ---- ");	
+	lcd.print(" ---- ");
+	if (isRuning) {
+		lcd.setCursor(16, 3);
+		lcd.print("RUN ");
+	}
+	else {
+		lcd.setCursor(16, 3);
+		lcd.print("STOP");
+	}
+	
+	switch (mode)
+	{
+		case 0:
+			drawLCD();
+			lcd.setCursor(14, 0);
+			lcd.write(0);
+			Serial.print("Mode: 0");
+			break;
+		case 1:
+			drawLCD();
+			lcd.setCursor(14, 1);
+			lcd.write(1);
+			Serial.print("Mode: 1");
+			break;
+		case 2:
+			drawLCD();
+			lcd.setCursor(14, 2);
+			lcd.write(2);
+			Serial.print("Mode: 2");
+			break;
+		case 3:
+			drawLCD();
+			lcd.setCursor(14, 3);
+			lcd.write(3);
+			Serial.print("Mode: 3");
+			break;
+		/*case 4:
+			drawLCD();
+			lcd.setCursor(14, 4);
+			lcd.write(4);
+			break;*/
+	default:
+		Serial.print("Default");
+		break;
+	}
 }
 void settingsLCD() {
 	float shuntTemp = (readTemp(Temp0) + readTemp(Temp1)) / 2;//average of shunt temperature
@@ -334,26 +374,7 @@ void clearAndPrintFloat(float num, int digits) {
 void EncoderISR() {
 	if (settingsButtonState) {
 		return;
-	}
-	//n = digitalRead(EncA);
-	//if ((encoderPinALast == LOW) && (n == HIGH)) {
-	//	if (digitalRead(EncB) == LOW) {
-	//		if (EncoderPos > -1000) {
-	//			EncoderPos--;
-	//			//CVoltageSet -= multiplier / 100;
-	//		}
-	//	}
-	//	else {
-	//		if (EncoderPos < 4096) {
-	//			EncoderPos++;
-	//			Serial.print("r");
-	//			//CVoltageSet += multiplier / 100;
-	//		}
-	//	}
-
-	//}
-	//encoderPinALast = n;
-	//Serial.println(EncoderPos);
+	}	
 	static uint8_t state = 0;
 	bool printFlag = false;
 	bool CLKstate = digitalRead(EncB);
@@ -422,33 +443,33 @@ void encoderButtonISR() {
 			extSense = true;
 		}
 	}
-	//Serial.println(multiplier);
+}
+
+void CCbuttonISR() {
+	Serial.println("CC");
+	mode = 1;
+	Serial.println(mode);
 }
 
 void CVbuttonISR() {
 	Serial.println("CV");
 	CVbuttonState = true;
-	mode = 1;
-	Serial.println(mode);
-}
-
-void CCbuttonISR() {
-	Serial.println("CC");
-	mode = 0;
-	Serial.println(mode);
-}
-
-void CPbuttonISR() {
-	Serial.println("CP");
-	mode = 3;
+	mode = 0; 
 	Serial.println(mode);
 }
 
 void CRbuttonISR() {
 	Serial.println("CR");
-	mode = 4;
+	mode = 3;
 	Serial.println(mode);
 }
+
+void CPbuttonISR() {
+	Serial.println("CP");
+	mode = 2;
+	Serial.println(mode);
+}
+
 
 void startButtonISR() {
 	Serial.println("Start");
@@ -523,7 +544,7 @@ void CalcPower() {
 }
 
 void CalcResistance() {
-	if (abs(Current ) == 00.00) {
+	if (abs( Current ) == 00.00) {
 		RLoad = 00.00;
 	}
 	else {
@@ -551,6 +572,11 @@ void calibrateACS() {
 	ACS1_offset = acs1Raw;
 	ACS2_offset = acs2Raw;
 }
+
+//=======================================
+// SCPI Functions 
+//=======================================
+
 
 void myErrorHandler(SCPI_C commands, SCPI_P parameters, Stream& interface) {
 	//This function is called every time an error occurs

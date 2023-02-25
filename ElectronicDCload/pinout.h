@@ -63,6 +63,16 @@ byte V2[] = {
   B11111
 };//Noice
 
+byte W[] = {
+  B11111,
+  B01110,
+  B01110,
+  B01110,
+  B01010,
+  B01010,
+  B10001,
+  B11111
+};
 
 ///
 //Pins definitions , Use same names on schematics.
