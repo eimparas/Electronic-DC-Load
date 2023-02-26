@@ -74,6 +74,17 @@ byte W[] = {
   B11111
 };
 
+byte A[] = {
+  B10001,
+  B01110,
+  B01110,
+  B01110,
+  B00000,
+  B01110,
+  B01110,
+  B11111
+};
+
 ///
 //Pins definitions , Use same names on schematics.
 ///
@@ -83,24 +94,24 @@ byte W[] = {
 #define EncB 3
 #define EncBTN A3
 
-//StartStopButtons
-#define StopBtn 4
-#define StartBtn 6
-
 //SCPI ethernet SPI cs
 #define ETH_CS 5
 
 
+//StartStopButtons
+#define StopBtn 4 //correct
+#define StartBtn 6 //correct
+
 
 //modeButtons
-#define CVbtn 10
-#define CCbtn 9
-#define CPbtn 8
-#define CRbtn 7
-#define BATbtn A2
+#define CVbtn 10//Correct
+#define CCbtn 7//Correct
+#define CPbtn 9
+#define CRbtn A2
+#define BATsw 8 //Correct
 
 //SettingsSW
-#define settingsSW A1
+#define settingsSW A1 //Correct
 
 //LM35 HeatSink temperature Sensor
 #define Temp0 A0
