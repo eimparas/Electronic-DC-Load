@@ -161,11 +161,34 @@ void setup() {
 	//Not setting an error handler will just ignore the errors.
 
 	
-	Ethernet.init(5);
+	/*Ethernet.init(5);
 	Ethernet.begin(mac);	
+	
 	server.begin();
 	Serial.print("server is at ");
 	Serial.println(Ethernet.localIP());
+
+*/
+
+	Ethernet.init(5); // initialize the Ethernet library
+	if (Ethernet.linkStatus() == LinkON) { // check if cable is connected
+		Serial.println("Ethernet cable connected");
+		if (Ethernet.begin(mac) == 0) { // start DHCP
+			Serial.println("Failed to get IP address using DHCP");
+			// you can also assign a static IP address if DHCP fails, see the Ethernet library examples
+		}
+		else {
+			Serial.print("IP address: ");
+			Serial.println(Ethernet.localIP());
+			server.begin(); // start the server
+			Serial.print("Server is at ");
+			Serial.println(Ethernet.localIP()); // print the server IP address to the serial monitor
+		}
+	}
+	else {
+		Serial.println("Ethernet cable disconnected");
+		// you can also put code here to handle the case when the cable is disconnected
+	}
 
 
 
@@ -302,25 +325,25 @@ void updateLCD() {
 			drawLCD();
 			lcd.setCursor(14, 0);
 			lcd.write(0);
-			Serial.print("Mode: 0");
+			//Serial.print("Mode: 0");
 			break;
 		case 1:
 			drawLCD();
 			lcd.setCursor(14, 1);
 			lcd.write(1);
-			Serial.print("Mode: 1");
+			//Serial.print("Mode: 1");
 			break;
 		case 2:
 			drawLCD();
 			lcd.setCursor(14, 2);
 			lcd.write(2);
-			Serial.print("Mode: 2");
+			//Serial.print("Mode: 2");
 			break;
 		case 3:
 			drawLCD();
 			lcd.setCursor(14, 3);
 			lcd.write(3);
-			Serial.print("Mode: 3");
+			//Serial.print("Mode: 3");
 			break;
 		/*case 4:
 			drawLCD();
