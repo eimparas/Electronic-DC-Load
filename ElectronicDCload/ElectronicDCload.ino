@@ -100,10 +100,11 @@ void setup() {
 
     lcd.init();
     lcd.clear();
-	lcd.createChar(0, C);
+	lcd.createChar(0, A);
 	lcd.createChar(1, V2);
-    lcd.createChar(2, R);
-	lcd.createChar(3, W);          
+    lcd.createChar(3, R);
+	lcd.createChar(2, W);
+
     lcd.setCursor(0, 0);
     lcd.backlight();
 	drawLCD();
@@ -135,12 +136,13 @@ void setup() {
     pinMode(CCbtn, INPUT_PULLUP);
     pinMode(CPbtn, INPUT_PULLUP);
     pinMode(CRbtn, INPUT_PULLUP);
+	pinMode(BATsw, INPUT_PULLUP);
 
 	attachInterrupt(digitalPinToInterrupt(CVbtn), CVbuttonISR, FALLING);
 	attachInterrupt(digitalPinToInterrupt(CCbtn), CCbuttonISR, FALLING);
 	attachInterrupt(digitalPinToInterrupt(CPbtn), CPbuttonISR, FALLING);
 	attachInterrupt(digitalPinToInterrupt(CRbtn), CRbuttonISR, FALLING);
-	attachInterrupt(digitalPinToInterrupt(BATbtn), batteryISR, FALLING);
+	attachInterrupt(digitalPinToInterrupt(BATsw), batteryISR, FALLING);
 #endif //modeButtons
 
 #ifdef StartStopButtons
@@ -323,27 +325,27 @@ void updateLCD() {
 	{
 		case 0:
 			drawLCD();
-			lcd.setCursor(14, 0);
+			lcd.setCursor(14, 1);
 			lcd.write(0);
-			//Serial.print("Mode: 0");
+			Serial.print("Mode: 0\n");
 			break;
 		case 1:
 			drawLCD();
-			lcd.setCursor(14, 1);
+			lcd.setCursor(14, 0);
 			lcd.write(1);
-			//Serial.print("Mode: 1");
+			Serial.print("Mode: 1\n");
 			break;
 		case 2:
 			drawLCD();
 			lcd.setCursor(14, 2);
 			lcd.write(2);
-			//Serial.print("Mode: 2");
+			Serial.print("Mode: 2\n");
 			break;
 		case 3:
 			drawLCD();
 			lcd.setCursor(14, 3);
 			lcd.write(3);
-			//Serial.print("Mode: 3");
+			Serial.print("Mode: 3\n");
 			break;
 		/*case 4:
 			drawLCD();
@@ -351,7 +353,7 @@ void updateLCD() {
 			lcd.write(4);
 			break;*/
 	default:
-		Serial.print("Default");
+		Serial.print("Default\n");
 		break;
 	}
 }
@@ -470,14 +472,14 @@ void encoderButtonISR() {
 
 void CCbuttonISR() {
 	Serial.println("CC");
-	mode = 1;
+	mode = 0;
 	Serial.println(mode);
 }
 
 void CVbuttonISR() {
 	Serial.println("CV");
 	CVbuttonState = true;
-	mode = 0; 
+	mode = 1; 
 	Serial.println(mode);
 }
 
@@ -493,6 +495,11 @@ void CPbuttonISR() {
 	Serial.println(mode);
 }
 
+void batteryISR() {
+	Serial.println("BAT");
+	mode = 4;
+	Serial.println(mode);
+}
 
 void startButtonISR() {
 	Serial.println("Start");
@@ -527,11 +534,7 @@ void settingsISR() {
 	clearScreen = true;
 }
 
-void batteryISR() {
-	Serial.println("BAT");
-	mode = 5;
-	Serial.println(mode);
-}
+
 
 //============================================================
 // Support Functions
