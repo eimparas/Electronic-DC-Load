@@ -7,6 +7,7 @@
 #include <EthernetENC.h>
 #include "pinout.h"
 
+
 MCP4725 MCP1(DAC1addr);
 MCP4725 MCP2(DAC2addr);
 ADS1115 ADS(ADCaddr);
@@ -30,11 +31,14 @@ double multiplier = 1;
 
 bool writeState = false;
 bool clearScreen = false;
+bool SclearScreen = false;
 bool settingsButtonState = false;
 bool encoderButtonState =false;
 bool CVbuttonState = false;
 bool extSense = false;
 bool isRuning = false;
+bool batteryMode = false;
+bool EthSetupStatus = false;
 int mode = 0;//CC default , CC:0, CV:1,CR:2,CP:3
 
 float CVoltageSet = 0.0;
@@ -59,6 +63,15 @@ float VoltExternalRaw = 0.0;
 
 float PowerExternal = 0.0;
 float RLoad = 0.0;
+
+
+float CVoltage = 0.0;
+float CCurrent = 0.0;
+float CRessistance = 0.0;
+float CPower = 0.0;
+
+//nice
+
 
 void setup() {
 #ifdef DEBUG
@@ -107,12 +120,9 @@ void setup() {
 
     lcd.setCursor(0, 0);
     lcd.backlight();
-	drawLCD();
-
-
-
-
-	delay(1000);
+	
+	splashScreen();
+	delay(100);
 	calibrateACS();//Calibrate the ACS_Offset after the LCD is fully initialized and in full backlit
 
 //============================================================
@@ -157,40 +167,49 @@ void setup() {
 //=================================
 //SCPI
 //=================================
+	
 	my_instrument.RegisterCommand(F("*IDN?"), &Identify);
 	my_instrument.RegisterCommand(F("SYSTem:ERRor?"), &GetLastEror);
-	my_instrument.SetErrorHandler(&myErrorHandler);
+	my_instrument.SetErrorHandler(&myErrorHandler);	
 	//Not setting an error handler will just ignore the errors.
 
 	
-	/*Ethernet.init(5);
-	Ethernet.begin(mac);	
-	
-	server.begin();
-	Serial.print("server is at ");
-	Serial.println(Ethernet.localIP());
-
-*/
-
 	Ethernet.init(5); // initialize the Ethernet library
 	if (Ethernet.linkStatus() == LinkON) { // check if cable is connected
 		Serial.println("Ethernet cable connected");
+		EthSetupStatus = true;
 		if (Ethernet.begin(mac) == 0) { // start DHCP
 			Serial.println("Failed to get IP address using DHCP");
 			// you can also assign a static IP address if DHCP fails, see the Ethernet library examples
-		}
-		else {
+			lcd.setCursor(0, 3);
+			lcd.print("LAN connected DHCP failed");
+			delay(2000);
+			lcd.clear();
+			drawLCD();
+		}//FailedDHCP loop (consider a hardcoded fallback Static?
+		else
+		{
 			Serial.print("IP address: ");
 			Serial.println(Ethernet.localIP());
 			server.begin(); // start the server
 			Serial.print("Server is at ");
 			Serial.println(Ethernet.localIP()); // print the server IP address to the serial monitor
-		}
+			lcd.setCursor(0, 3);
+			lcd.print("Ehternet connected");//Update the Splasscreen
+			delay(200);
+			lcd.clear();
+			drawLCD();//Clean and contineew to the normal flow of the program
+		}//Got address from DHCP
 	}
 	else {
 		Serial.println("Ethernet cable disconnected");
-		// you can also put code here to handle the case when the cable is disconnected
-	}
+		EthSetupStatus = false;
+		lcd.setCursor(0, 3);
+		lcd.print("Ehternet Not Connected");//Update the Splasscreen
+		delay(4000);
+		lcd.clear();
+		drawLCD();//Clean and contineew to the normal flow of the program
+	}//Ethernet Not connected.
 
 
 
@@ -198,6 +217,34 @@ void setup() {
 }
 
 void loop() {
+	if (Ethernet.linkStatus() == LinkON && EthSetupStatus == false) {
+		Serial.println("Eth connected AfterTheSetup");
+		if (Ethernet.begin(mac) == 0) { // start DHCP
+			Serial.println("Failed to get IP address using DHCP");
+			lcd.clear();
+			// you can also assign a static IP address if DHCP fails, see the Ethernet library examples
+			lcd.setCursor(0, 3);
+			lcd.print("LAN connected DHCP failed");
+			delay(2000);
+			lcd.clear();
+			drawLCD();
+		}//FailedDHCP loop (consider a hardcoded fallback Static?
+		else
+		{
+			Serial.print("IP address: ");
+			Serial.println(Ethernet.localIP());
+			server.begin(); // start the server
+			Serial.print("Server is at ");
+			Serial.println(Ethernet.localIP()); // print the server IP address to the serial monitor
+			lcd.setCursor(0, 3);
+			lcd.print("Ehternet connected");//Update the Splasscreen
+			delay(200);
+			lcd.clear();
+			drawLCD();//Clean and contineew to the normal flow of the program
+			EthSetupStatus = true;
+		}//Got address from DHCP After the fact .. (Re_Atempt ethernet negotiation)
+	}
+
 	if (encoderButtonState) {
 		encoderButtonState = false;
 		MCP1.setValue(EncoderPos);
@@ -211,23 +258,45 @@ void loop() {
 	/*readCurrent();
 	readVoltage();
 	CalcPower();
-	CalcResistance();
-	Serial.print(acs1Raw);
+	CalcResistance();*/
+	Serial.print(batteryMode);
 	Serial.print(",");
-	Serial.print(acs2Raw);
+	Serial.print(clearScreen);
 	Serial.print(",");
-	Serial.print(ACS1_A);
+	Serial.print(SclearScreen);
 	Serial.print(",");
-	Serial.print(ACS2_A);
+	Serial.print(mode);
 	Serial.print(",");
-	Serial.println(Current);*/
+	Serial.println(" ");
+
+	//===============================
+	//Diferent screens
+	//===============================
+
+
 	if (!settingsButtonState) {
+		if (SclearScreen) {
+			lcd.clear();
+			drawLCD();
+			SclearScreen = false;
+		}		
+		updateLCD();
+	}
+	else {
+		if (SclearScreen) {
+			lcd.clear();
+			SclearScreen = false;
+		}
+		settingsLCD();
+	}
+
+
+	/*if (!batteryMode) {
 		if (clearScreen) {
 			lcd.clear();
 			drawLCD();
 			clearScreen = false;
-		}	
-		
+		}
 		updateLCD();
 	}
 	else {
@@ -235,13 +304,19 @@ void loop() {
 			lcd.clear();
 			clearScreen = false;
 		}
-		settingsLCD();
-	}
+		batteryModeLCD();
+	}*/
+
+
 	CVoltageSet += (EncoderPos * (multiplier / 100));
 	EncoderPos = 0;
 	if (CVoltageSet < 0) {
 		CVoltageSet = 0;
 	}
+
+//==========================================================
+//SCPI
+//==========================================================
 
 	client = server.available();
 	if (client.connected()) {
@@ -327,33 +402,28 @@ void updateLCD() {
 			drawLCD();
 			lcd.setCursor(14, 1);
 			lcd.write(0);
-			Serial.print("Mode: 0\n");
+			//Serial.print("Mode: 0\n");
 			break;
 		case 1:
 			drawLCD();
 			lcd.setCursor(14, 0);
 			lcd.write(1);
-			Serial.print("Mode: 1\n");
+			//Serial.print("Mode: 1\n");
 			break;
 		case 2:
 			drawLCD();
 			lcd.setCursor(14, 2);
 			lcd.write(2);
-			Serial.print("Mode: 2\n");
+			//Serial.print("Mode: 2\n");
 			break;
 		case 3:
 			drawLCD();
 			lcd.setCursor(14, 3);
 			lcd.write(3);
-			Serial.print("Mode: 3\n");
+			//Serial.print("Mode: 3\n");
 			break;
-		/*case 4:
-			drawLCD();
-			lcd.setCursor(14, 4);
-			lcd.write(4);
-			break;*/
 	default:
-		Serial.print("Default\n");
+		//Serial.print("Default\n");
 		break;
 	}
 }
@@ -380,6 +450,15 @@ void settingsLCD() {
 	}
 }
 
+void batteryModeLCD() {
+	lcd.setCursor(0, 0);
+	lcd.print("targetVoltage:");
+	lcd.setCursor(0, 1);
+	lcd.print("Current :");
+	lcd.setCursor(0, 2);
+	lcd.print("Capacity: ");
+}
+
 void clearAndPrintFloat(float num, int digits) {
 	lcd.print(num, digits);
 	digits++;
@@ -390,6 +469,17 @@ void clearAndPrintFloat(float num, int digits) {
 	for (byte i = 0; i < 5 - digits; i++) {
 		lcd.print(" ");
 	}
+}
+
+void splashScreen() {
+
+	lcd.clear();
+	lcd.setCursor(0, 0);
+	lcd.print("Electronic DC load");
+	lcd.setCursor(1, 1);
+	lcd.print("0-40V 0-20A ");
+	lcd.setCursor(8, 2);
+	lcd.print("THMMY");
 }
 
 //============================================================
@@ -498,7 +588,16 @@ void CPbuttonISR() {
 void batteryISR() {
 	Serial.println("BAT");
 	mode = 4;
+	clearScreen = true;
 	Serial.println(mode);
+	settingsButtonState = false;
+	if (batteryMode) {
+		batteryMode = false;
+	}
+	else {
+		batteryMode = true;
+	}
+	
 }
 
 void startButtonISR() {
@@ -525,13 +624,14 @@ void stopButtonISR() {
 
 void settingsISR() {
 	Serial.println("SET");
+	batteryMode = false;
 	if (settingsButtonState) {
 		settingsButtonState = false;
 	}
 	else {
 		settingsButtonState = true;
 	}
-	clearScreen = true;
+	SclearScreen = true;
 }
 
 

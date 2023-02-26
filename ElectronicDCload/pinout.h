@@ -99,19 +99,19 @@ byte A[] = {
 
 
 //StartStopButtons
-#define StopBtn 4 //correct
-#define StartBtn 6 //correct
+#define StopBtn 4 
+#define StartBtn 6 
 
 
 //modeButtons
-#define CVbtn 10//Correct
-#define CCbtn 7//Correct
+#define CVbtn 10
+#define CCbtn 7
 #define CPbtn 9
 #define CRbtn A2
-#define BATsw 8 //Correct
+#define BATsw 8
 
 //SettingsSW
-#define settingsSW A1 //Correct
+#define settingsSW A1
 
 //LM35 HeatSink temperature Sensor
 #define Temp0 A0
