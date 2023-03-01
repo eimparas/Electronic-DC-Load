@@ -53,6 +53,13 @@ float ACS2_offset = 2.47;
 float acs1Raw = 0.0;
 float acs2Raw = 0.0;
 
+struct setPoint
+{
+	float Voltage;
+	float Current;
+	float Resistance;
+	float Power;
+} setPoints;
 
 float VoltInternal = 0.0;
 float VoltInternalRaw = 0.0;
@@ -70,7 +77,7 @@ float CCurrent = 0.0;
 float CRessistance = 0.0;
 float CPower = 0.0;
 
-//nice
+
 
 
 void setup() {
@@ -138,9 +145,7 @@ void setup() {
 	attachInterrupt(digitalPinToInterrupt(EncBTN), encoderButtonISR, FALLING);
 
 #endif // encoderConnected
-    ///<summary>
-    /// Rottery Encoder
-   /// </summary>
+    
 #ifdef modeButtons
     pinMode(CVbtn, INPUT_PULLUP);
     pinMode(CCbtn, INPUT_PULLUP);
@@ -217,35 +222,7 @@ void setup() {
 }
 
 void loop() {
-	if (Ethernet.linkStatus() == LinkON && EthSetupStatus == false) {
-		Serial.println("Eth connected AfterTheSetup");
-		if (Ethernet.begin(mac) == 0) { // start DHCP
-			Serial.println("Failed to get IP address using DHCP");
-			lcd.clear();
-			// you can also assign a static IP address if DHCP fails, see the Ethernet library examples
-			lcd.setCursor(0, 3);
-			lcd.print("LAN connected DHCP failed");
-			delay(2000);
-			lcd.clear();
-			drawLCD();
-		}//FailedDHCP loop (consider a hardcoded fallback Static?
-		else
-		{
-			Serial.print("IP address: ");
-			Serial.println(Ethernet.localIP());
-			server.begin(); // start the server
-			Serial.print("Server is at ");
-			Serial.println(Ethernet.localIP()); // print the server IP address to the serial monitor
-			lcd.setCursor(0, 3);
-			lcd.print("Ehternet connected");//Update the Splasscreen
-			delay(200);
-			lcd.clear();
-			drawLCD();//Clean and contineew to the normal flow of the program
-			EthSetupStatus = true;
-		}//Got address from DHCP After the fact .. (Re_Atempt ethernet negotiation)
-	}
-
-	if (encoderButtonState) {
+		if (encoderButtonState) {
 		encoderButtonState = false;
 		MCP1.setValue(EncoderPos);
 	}
@@ -259,60 +236,72 @@ void loop() {
 	readVoltage();
 	CalcPower();
 	CalcResistance();*/
-	Serial.print(batteryMode);
+	Serial.print(setPoints.Voltage);
 	Serial.print(",");
-	Serial.print(clearScreen);
+	Serial.print(setPoints.Current);
 	Serial.print(",");
-	Serial.print(SclearScreen);
+	//Serial.print(SclearScreen);
 	Serial.print(",");
-	Serial.print(mode);
+	Serial.print(setPoints.Power);
 	Serial.print(",");
-	Serial.println(" ");
+	Serial.println(setPoints.Resistance);
 
 	//===============================
 	//Diferent screens
 	//===============================
 
 
-	if (!settingsButtonState) {
-		if (SclearScreen) {
-			lcd.clear();
-			drawLCD();
-			SclearScreen = false;
-		}		
-		updateLCD();
-	}
-	else {
-		if (SclearScreen) {
-			lcd.clear();
-			SclearScreen = false;
-		}
-		settingsLCD();
-	}
-
-
-	/*if (!batteryMode) {
+	if (!(settingsButtonState || batteryMode)) {
 		if (clearScreen) {
 			lcd.clear();
 			drawLCD();
 			clearScreen = false;
-		}
+		}		
 		updateLCD();
 	}
-	else {
+	else if (batteryMode) {
 		if (clearScreen) {
 			lcd.clear();
 			clearScreen = false;
 		}
 		batteryModeLCD();
-	}*/
-
-
-	CVoltageSet += (EncoderPos * (multiplier / 100));
-	EncoderPos = 0;
-	if (CVoltageSet < 0) {
-		CVoltageSet = 0;
 	}
+	else {
+		if (clearScreen) {
+			lcd.clear();
+			clearScreen = false;
+		}
+		settingsLCD();
+	}
+	
+	switch (mode) {
+		case 0:
+			setPoints.Current += (EncoderPos * (multiplier / 100));
+			if (setPoints.Current < 0) {
+				setPoints.Current = 0;
+			}
+			break;
+		case 1:
+			setPoints.Voltage += (EncoderPos * (multiplier / 100));
+			if (setPoints.Voltage < 0) {
+				setPoints.Voltage = 0;
+			}
+			break;
+		case 2:
+			setPoints.Power += (EncoderPos * (multiplier / 100));
+			if (setPoints.Power < 0) {
+				setPoints.Power = 0;
+			}
+			break;
+		case 3:
+			setPoints.Resistance += (EncoderPos * (multiplier));
+			if (setPoints.Resistance < 0) {
+				setPoints.Resistance = 0;
+			}
+			break;
+	}
+	EncoderPos = 0;
+
 
 //==========================================================
 //SCPI
@@ -340,15 +329,30 @@ void drawLCD() {
 	lcd.print("W|");
 	lcd.setCursor(6, 3);
 	lcd.print("R|");
-
-	lcd.setCursor(14, 0);
+	if (mode != 0) {
+		lcd.setCursor(14, 1);
+		lcd.print("A");
+	}
+	if (mode != 1) {
+		lcd.setCursor(14, 0);
+		lcd.print("V");
+	}
+	if (mode != 2) {
+		lcd.setCursor(14, 2);
+		lcd.print("W");
+	}
+	if (mode != 3) {
+		lcd.setCursor(14, 3);
+		lcd.print("R");
+	}
+	/*lcd.setCursor(14, 0);
 	lcd.print("V");
 	lcd.setCursor(14, 1);
 	lcd.print("A");
 	lcd.setCursor(14, 2);
 	lcd.print("W");
 	lcd.setCursor(14, 3);
-	lcd.print("R");
+	lcd.print("R");*/
 }
 
 void clearLCD() {
@@ -380,13 +384,33 @@ void updateLCD() {
 	lcd.setCursor(0, 3);
 	clearAndPrintFloat(abs(RLoad),0);
 	lcd.setCursor(8, 0);
-	clearAndPrintFloat(CVoltageSet,2);
+	if (mode == 1) {
+		clearAndPrintFloat(setPoints.Voltage, 2);
+	}
+	else {
+		lcd.print(" ---- ");
+	}
 	lcd.setCursor(8, 1);
-	lcd.print(" ---- ");
+	if (mode == 0) {
+		clearAndPrintFloat(setPoints.Current, 2);
+	}
+	else {
+		lcd.print(" ---- ");
+	}
 	lcd.setCursor(8, 2);
-	lcd.print(" ---- ");
+	if (mode == 2) {
+		clearAndPrintFloat(setPoints.Power, 2);
+	}
+	else {
+		lcd.print(" ---- ");
+	}
 	lcd.setCursor(8, 3);
-	lcd.print(" ---- ");
+	if (mode == 3) {
+		clearAndPrintFloat(setPoints.Resistance, 0);
+	}
+	else {
+		lcd.print(" ---- ");
+	}
 	if (isRuning) {
 		lcd.setCursor(16, 3);
 		lcd.print("RUN ");
@@ -489,6 +513,7 @@ void splashScreen() {
 void EncoderISR() {
 	if (settingsButtonState) {
 		return;
+
 	}	
 	static uint8_t state = 0;
 	bool printFlag = false;
@@ -631,7 +656,7 @@ void settingsISR() {
 	else {
 		settingsButtonState = true;
 	}
-	SclearScreen = true;
+	clearScreen = true;
 }
 
 
