@@ -1,8 +1,8 @@
 #include <LiquidCrystal_I2C.h>
 #include <ADS1X15.h>
 #include <MCP4725.h>
-#include "Arduino.h"
-#include "Vrekrer_scpi_parser.h"
+#include <Arduino.h>
+#include <Vrekrer_scpi_parser.h>
 #include <SPI.h>
 #include <EthernetENC.h>
 #include "pinout.h"
@@ -33,8 +33,6 @@ bool writeState = false;
 bool clearScreen = false;
 bool SclearScreen = false;
 bool settingsButtonState = false;
-bool encoderButtonState =false;
-bool CVbuttonState = false;
 bool extSense = false;
 bool isRuning = false;
 bool batteryMode = false;
@@ -61,6 +59,11 @@ struct setPoint
 	float Power;
 } setPoints;
 
+struct batterySetPoint {
+	float Vstop;
+	float Current;
+	float CapLimit;
+} battPoints;
 float VoltInternal = 0.0;
 float VoltInternalRaw = 0.0;
 float VoltExternal = 0.0;
@@ -203,7 +206,7 @@ void setup() {
 			lcd.print("Ehternet connected");//Update the Splasscreen
 			delay(200);
 			lcd.clear();
-			drawLCD();//Clean and contineew to the normal flow of the program
+			drawLCD();//Clean and continue to the normal flow of the program
 		}//Got address from DHCP
 	}
 	else {
@@ -222,16 +225,6 @@ void setup() {
 }
 
 void loop() {
-		if (encoderButtonState) {
-		encoderButtonState = false;
-		MCP1.setValue(EncoderPos);
-	}
-
-	if (CVbuttonState) {
-		CVbuttonState = false;
-		MCP2.setValue(EncoderPos);
-	}
-	
 	/*readCurrent();
 	readVoltage();
 	CalcPower();
@@ -264,7 +257,8 @@ void loop() {
 			lcd.clear();
 			clearScreen = false;
 		}
-		batteryModeLCD();
+		batteryModeLCD(); 
+		updateBatteryMode();
 	}
 	else {
 		if (clearScreen) {
@@ -273,8 +267,8 @@ void loop() {
 		}
 		settingsLCD();
 	}
-	
-	switch (mode) {
+	if (!batteryMode) {
+		switch (mode) {
 		case 0:
 			setPoints.Current += (EncoderPos * (multiplier / 100));
 			if (setPoints.Current < 0) {
@@ -299,6 +293,30 @@ void loop() {
 				setPoints.Resistance = 0;
 			}
 			break;
+		}
+	}
+	else {
+		switch (mode) {
+		case 0:
+			battPoints.Current += (EncoderPos * (multiplier / 100));
+			if (battPoints.Current < 0) {
+				battPoints.Current = 0;
+			}
+			break;
+		case 1:
+			battPoints.Vstop += (EncoderPos * (multiplier / 100));
+			if (battPoints.Vstop < 0) {
+				battPoints.Vstop = 0;
+			}
+			break;
+		case 2:
+			battPoints.CapLimit += (EncoderPos * (multiplier / 100));
+			if (battPoints.CapLimit < 0) {
+				battPoints.CapLimit = 0;
+			}
+			break;
+
+		}
 	}
 	EncoderPos = 0;
 
@@ -345,14 +363,82 @@ void drawLCD() {
 		lcd.setCursor(14, 3);
 		lcd.print("R");
 	}
-	/*lcd.setCursor(14, 0);
-	lcd.print("V");
+	
+}
+
+void batteryModeLCD() {
+	lcd.setCursor(6, 0);
+	lcd.print("V|");
+	lcd.setCursor(6, 1);
+	lcd.print("A|");
+	lcd.setCursor(5, 2);
+	lcd.print("Ah|");
+	lcd.setCursor(5, 3);
+	lcd.print("Wh|");
+	lcd.setCursor(14, 0);
+	lcd.print("V_Stop");//Cuttof point
 	lcd.setCursor(14, 1);
 	lcd.print("A");
 	lcd.setCursor(14, 2);
-	lcd.print("W");
-	lcd.setCursor(14, 3);
-	lcd.print("R");*/
+	lcd.print("C_lim");//Cuttof POint
+	//lcd.setCursor(14, 3);
+	//lcd.print("");
+	if (isRuning) {
+		lcd.setCursor(16, 3);
+		lcd.print("RUN ");
+	}
+	else {
+		lcd.setCursor(16, 3);
+		lcd.print("STOP");
+	}
+}
+
+void updateBatteryMode() {
+	lcd.setCursor(0, 0);
+	clearAndPrintFloat(abs(VoltExternal), 2);
+	lcd.setCursor(0, 1);
+	clearAndPrintFloat(abs(Current), 3);
+	lcd.setCursor(0, 2);
+	clearAndPrint4Float(abs(PowerExternal), 2 );
+	lcd.setCursor(0, 3);
+	clearAndPrint4Float(abs(RLoad), 0);
+	lcd.setCursor(8, 0);
+
+	if (mode == 1) {
+		clearAndPrintFloat(battPoints.Vstop, 2);
+	}
+	else {
+		lcd.print(" ---- ");
+	}
+	lcd.setCursor(8, 1);
+	if (mode == 0) {
+		clearAndPrintFloat(battPoints.Current, 2);
+	}
+	else {
+		lcd.print(" ---- ");
+	}
+	lcd.setCursor(8, 2);
+	if (mode == 2) {
+		clearAndPrintFloat(battPoints.CapLimit, 2);
+	}
+	else {
+		lcd.print(" ---- ");
+	}
+	//lcd.setCursor(8, 3);
+	//if (mode == 3) {
+	//	clearAndPrintFloat(battPoints.Resistance, 0);
+	//}
+	//else {
+	//	//lcd.print(" ---- ");
+	//}
+	if (isRuning) {
+		lcd.setCursor(16, 3);
+		lcd.print("RUN ");
+	}
+	else {
+		lcd.setCursor(16, 3);
+		lcd.print("STOP");
+	}
 }
 
 void clearLCD() {
@@ -384,6 +470,7 @@ void updateLCD() {
 	lcd.setCursor(0, 3);
 	clearAndPrintFloat(abs(RLoad),0);
 	lcd.setCursor(8, 0);
+
 	if (mode == 1) {
 		clearAndPrintFloat(setPoints.Voltage, 2);
 	}
@@ -451,6 +538,7 @@ void updateLCD() {
 		break;
 	}
 }
+
 void settingsLCD() {
 	float shuntTemp = (readTemp(Temp0) + readTemp(Temp1)) / 2;//average of shunt temperature
 	lcd.setCursor(0, 0);
@@ -465,34 +553,40 @@ void settingsLCD() {
 	lcd.print("IPv4:");
 	lcd.print(Ethernet.localIP());
 	lcd.setCursor(0, 3);
-	lcd.print("External Sense:O");
+	lcd.print("External Sense:O");//To reduce flicker from the loop(); refresh , we have the "o" Permanent 
 	if (extSense) {
-		lcd.print("N ");
+		lcd.print("N ");//, Write N for " ON" 
 	}
 	else {
-		lcd.print("FF");
-	}
+		lcd.print("FF");//or , Write FF for "OFF" Overriding the N 
+	}//thus updaing only whats needed
 }
 
-void batteryModeLCD() {
-	lcd.setCursor(0, 0);
-	lcd.print("targetVoltage:");
-	lcd.setCursor(0, 1);
-	lcd.print("Current :");
-	lcd.setCursor(0, 2);
-	lcd.print("Capacity: ");
-}
+
 
 void clearAndPrintFloat(float num, int digits) {
-	lcd.print(num, digits);
-	digits++;
-	while (num >= 10) {
+	lcd.print(num, digits);// Print the number to the LCD with the specified number of digits.
+	digits++;// Increment the number of digits to account for the decimal point.
+	while (num >= 10) {// Count the number of digits in the integer part of the number.
 		digits++;
 		num /= 10;
 	}
-	for (byte i = 0; i < 5 - digits; i++) {
+	for (byte i = 0; i < 5 - digits; i++) {// Print spaces to fill the remaining characters on the LCD display.
 		lcd.print(" ");
 	}
+}
+
+void clearAndPrint4Float(float num, int digits) {
+	lcd.print(num, digits);// Print the number to the LCD with the specified number of digits.
+	digits++;// Increment the number of digits to account for the decimal point.
+	while (num >= 10) {// Count the number of digits in the integer part of the number.
+		digits++;
+		num /= 10;
+	}
+	for (byte i = 0; i < 4 - digits; i++) {
+		lcd.print(" ");
+	}// Print spaces to fill the remaining characters on the LCD display. With the Diff being we fill 4 parts ,
+	//to account for the extra letters (Ah , Wh)
 }
 
 void splashScreen() {
@@ -516,7 +610,6 @@ void EncoderISR() {
 
 	}	
 	static uint8_t state = 0;
-	bool printFlag = false;
 	bool CLKstate = digitalRead(EncB);
 	bool DTstate = digitalRead(EncA);
 	switch (state) {
@@ -543,7 +636,6 @@ void EncoderISR() {
 		if (CLKstate && DTstate) {  // Both CLK and DT now high as the encoder completes one step clockwise
 			state = 0;
 			++EncoderPos;
-			printFlag = true;
 		}
 		break;
 		// Anticlockwise rotation
@@ -561,20 +653,20 @@ void EncoderISR() {
 		if (CLKstate && DTstate) {
 			state = 0;
 			--EncoderPos;
-			printFlag = true;
 		}
 		break;
 	}
 }
 void encoderButtonISR() {
 	if (!settingsButtonState) {
-		if (multiplier <= 10) {
-			multiplier *= 10;
+		if (multiplier < 10) {
+			multiplier *= 100;
 		}
 		else {
 			multiplier = 1.0;
 		}
-	}
+	}//If the instrument is at the main screen , the Encoder`s button 
+	// will opperate for seting the seting pressision. 
 	else {
 		if (extSense) {
 			extSense = false;
@@ -582,7 +674,8 @@ void encoderButtonISR() {
 		else {
 			extSense = true;
 		}
-	}
+	}//when on Setings menu , it will be used for enabling or disabling the 
+	// external sense . 
 }
 
 void CCbuttonISR() {
@@ -593,12 +686,12 @@ void CCbuttonISR() {
 
 void CVbuttonISR() {
 	Serial.println("CV");
-	CVbuttonState = true;
-	mode = 1; 
+	mode = 1;
 	Serial.println(mode);
 }
 
 void CRbuttonISR() {
+	if (batteryMode) return; // Disable on battery mode
 	Serial.println("CR");
 	mode = 3;
 	Serial.println(mode);
@@ -612,7 +705,7 @@ void CPbuttonISR() {
 
 void batteryISR() {
 	Serial.println("BAT");
-	mode = 4;
+	mode = 0;
 	clearScreen = true;
 	Serial.println(mode);
 	settingsButtonState = false;
@@ -627,7 +720,6 @@ void batteryISR() {
 
 void startButtonISR() {
 	Serial.println("Start");
-	encoderButtonState = true;
 
 	if (writeState == true)
 	{
@@ -649,14 +741,14 @@ void stopButtonISR() {
 
 void settingsISR() {
 	Serial.println("SET");
-	batteryMode = false;
+	batteryMode = false;//Disable the battery mode,
 	if (settingsButtonState) {
 		settingsButtonState = false;
-	}
+	}//If setings are ON, close/disable them. 
 	else {
 		settingsButtonState = true;
-	}
-	clearScreen = true;
+	}//If Setings are OFF , Open/Enable them 
+	clearScreen = true;//Set a flag to clear the screen , to prepare for the new layout
 }
 
 
@@ -723,6 +815,8 @@ void calibrateACS() {
 	ACS1_offset = acs1Raw;
 	ACS2_offset = acs2Raw;
 }
+
+
 
 //=======================================
 // SCPI Functions 
