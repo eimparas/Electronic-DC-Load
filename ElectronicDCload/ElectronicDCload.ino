@@ -7,15 +7,6 @@
 #include <EthernetENC.h>
 #include "pinout.h"
 
-
-MCP4725 MCP1(DAC1addr);
-MCP4725 MCP2(DAC2addr);
-ADS1115 ADS(ADCaddr);
-LiquidCrystal_I2C lcd(LCDaddr, 20, 4);
-
-SCPI_Parser my_instrument;
-EthernetServer server(5555);
-EthernetClient client;
 byte mac[6] = { 0x74, 0x69, 0x69, 0x2D, 0x30, 0x31 };
 
 #define DEBUG
@@ -51,6 +42,8 @@ float ACS2_offset = 2.47;
 float acs1Raw = 0.0;
 float acs2Raw = 0.0;
 
+unsigned long startTime;
+
 struct setPoint
 {
 	float Voltage;
@@ -64,6 +57,20 @@ struct batterySetPoint {
 	float Current;
 	float CapLimit;
 } battPoints;
+
+enum SenseType {
+	InternalSense = 0,
+	ExternalSense = 1
+};
+
+enum operationMode {
+	CC,
+	CV,
+	CP,
+	CR
+};
+
+
 float VoltInternal = 0.0;
 float VoltInternalRaw = 0.0;
 float VoltExternal = 0.0;
@@ -81,9 +88,21 @@ float CRessistance = 0.0;
 float CPower = 0.0;
 
 
+MCP4725 MCP1(DAC1addr);
+MCP4725 MCP2(DAC2addr);
+ADS1115 ADS(ADCaddr);
+LiquidCrystal_I2C lcd(LCDaddr, 20, 4);
+
+SCPI_Parser my_instrument;
+EthernetServer server(5555);
+EthernetClient client;
+
+SenseType sense;//Initialize a enum for storing the source of the voltage measurement
+operationMode Mode;
 
 
 void setup() {
+	sense = InternalSense;//Default it to the internal 
 #ifdef DEBUG
     Serial.begin(115200);
     Serial.println("ImHere");
@@ -116,7 +135,7 @@ void setup() {
 	Serial.print("the ADC Voltage factor is : ");
     Serial.print(ADCVoltageFactor, 5);
 	
-    
+	    
 //============================================================
 //LCD 
 //============================================================
@@ -268,26 +287,26 @@ void loop() {
 		settingsLCD();
 	}
 	if (!batteryMode) {
-		switch (mode) {
-		case 0:
+		switch (Mode) {
+		case CC:
 			setPoints.Current += (EncoderPos * (multiplier / 100));
 			if (setPoints.Current < 0) {
 				setPoints.Current = 0;
 			}
 			break;
-		case 1:
+		case CV:
 			setPoints.Voltage += (EncoderPos * (multiplier / 100));
 			if (setPoints.Voltage < 0) {
 				setPoints.Voltage = 0;
 			}
 			break;
-		case 2:
+		case CP:
 			setPoints.Power += (EncoderPos * (multiplier / 100));
 			if (setPoints.Power < 0) {
 				setPoints.Power = 0;
 			}
 			break;
-		case 3:
+		case CR:
 			setPoints.Resistance += (EncoderPos * (multiplier));
 			if (setPoints.Resistance < 0) {
 				setPoints.Resistance = 0;
@@ -347,19 +366,19 @@ void drawLCD() {
 	lcd.print("W|");
 	lcd.setCursor(6, 3);
 	lcd.print("R|");
-	if (mode != 0) {
+	if (Mode != CC) {
 		lcd.setCursor(14, 1);
 		lcd.print("A");
 	}
-	if (mode != 1) {
+	if (Mode != CV) {
 		lcd.setCursor(14, 0);
 		lcd.print("V");
 	}
-	if (mode != 2) {
+	if (Mode != CP) {
 		lcd.setCursor(14, 2);
 		lcd.print("W");
 	}
-	if (mode != 3) {
+	if (Mode != CR) {
 		lcd.setCursor(14, 3);
 		lcd.print("R");
 	}
@@ -404,21 +423,21 @@ void updateBatteryMode() {
 	clearAndPrint4Float(abs(RLoad), 0);
 	lcd.setCursor(8, 0);
 
-	if (mode == 1) {
+	if (Mode == CV) {
 		clearAndPrintFloat(battPoints.Vstop, 2);
 	}
 	else {
 		lcd.print(" ---- ");
 	}
 	lcd.setCursor(8, 1);
-	if (mode == 0) {
+	if (Mode==CC) {
 		clearAndPrintFloat(battPoints.Current, 2);
 	}
 	else {
 		lcd.print(" ---- ");
 	}
 	lcd.setCursor(8, 2);
-	if (mode == 2) {
+	if (Mode==CP) {
 		clearAndPrintFloat(battPoints.CapLimit, 2);
 	}
 	else {
@@ -680,32 +699,36 @@ void encoderButtonISR() {
 
 void CCbuttonISR() {
 	Serial.println("CC");
-	mode = 0;
+	//mode = 0;
+	Mode = CC;
 	Serial.println(mode);
 }
 
 void CVbuttonISR() {
 	Serial.println("CV");
-	mode = 1;
+	//mode = 1;
+	Mode = CV;
 	Serial.println(mode);
 }
 
 void CRbuttonISR() {
 	if (batteryMode) return; // Disable on battery mode
 	Serial.println("CR");
-	mode = 3;
+	//mode = 3;
+	Mode = CR;
 	Serial.println(mode);
 }
 
 void CPbuttonISR() {
 	Serial.println("CP");
-	mode = 2;
+	//mode = 2;
+	Mode = CP;
 	Serial.println(mode);
 }
 
 void batteryISR() {
 	Serial.println("BAT");
-	mode = 0;
+	//mode = 0;
 	clearScreen = true;
 	Serial.println(mode);
 	settingsButtonState = false;
@@ -756,19 +779,36 @@ void settingsISR() {
 //============================================================
 // Support Functions
 //============================================================
-void readVoltage() {
-	float ADCA0 = 0.0;
-	float ADCA1 = 0.0;
-	ADCA0 = ADS.readADC(0);
-	ADCA1 = ADS.readADC(1);
-	VoltExternalRaw = ADCA0 * ADCVoltageFactor;
-	VoltInternalRaw = ADCA1 * ADCVoltageFactor;
-	//Vin=(VoltExternalRaw*(R11+R12+R2)/R2;
-	VoltExternal = (VoltExternalRaw * (R11 + R12 + R2) / R2);
-	VoltInternal = (VoltInternalRaw * (R11 + R12 + R2) / R2);
+
+//void readVoltage() {
+//	float ADCA0 = 0.0;
+//	float ADCA1 = 0.0;
+//	ADCA0 = ADS.readADC(0);
+//	ADCA1 = ADS.readADC(1);
+//	VoltExternalRaw = ADCA0 * ADCVoltageFactor;
+//	VoltInternalRaw = ADCA1 * ADCVoltageFactor;
+//	//Vin=(VoltExternalRaw*(R11+R12+R2)/R2;
+//	VoltExternal = (VoltExternalRaw * (R11 + R12 + R2) / R2);
+//	VoltInternal = (VoltInternalRaw * (R11 + R12 + R2) / R2);
+//}
+
+float readVoltage(int Channel) {
+	float ADC = 0.0;	
+	ADC = ADS.readADC(Channel);	
+	float VoltRaw = ADC * ADCVoltageFactor;
+	
+	
+	
+	if (Channel == InternalSense) {
+		return (VoltRaw * R9 / (R7 + R8 + R9));
+	}
+
+	if (Channel == ExternalSense) {
+		return VoltRaw * R12 / (R10 + R11 + R12);
+	}
 }
 
-void readCurrent() {
+float readCurrent() {
 	float ADCA2 = 0.0;
 	float ADCA3 = 0.0;
 	ADCA2 = ADS.readADC(2);
@@ -779,21 +819,73 @@ void readCurrent() {
 	ACS1_A = (ACS1_offset - acs1Raw)/0.066;
 	ACS2_A = (ACS2_offset - acs2Raw)/0.066;
 	Current = ACS1_A + ACS2_A;
+	return Current; //Crude , i will come back to this , its 2:20AM give me A brake
 }
 
 
 void CalcPower() {
-	PowerExternal = VoltExternal * Current;
+	PowerExternal = readVoltage(sense) * Current;
 }
 
 void CalcResistance() {
-	if (abs( Current ) == 00.00) {
+	if (abs(readCurrent()) == 00.00) {
 		RLoad = 00.00;
 	}
 	else {
-		RLoad = abs( VoltExternal )/ abs(Current);
+		RLoad = abs(readVoltage(sense))/ abs(readCurrent());
 	}
 }
+
+//float CalcWattHours(float V_in, float A_drawn) {
+//	//float kwh;
+//	//float ah;
+//	//uint32_t ts1 = millis();
+//
+//	//uint32_t ts2 = millis();//This needs to be Corrected
+//
+//
+//	//// print the time interval in seconds
+//	//uint32_t ts3 = (ts2 - ts1) / 1000;
+//	//totalET = totalET + ts3;
+//	//Serial.print(“Seconds: “);
+//	//Serial.println(totalET);
+//
+//	//kwh = PowerExternal * ts3 / 3600;
+//	//ah = kwh / VoltExternal;
+//	
+//
+// // Check if V_in is above V_Stop
+//	if (V_in > V_Stop) {
+//		// If this is the first time calling the function, set startTime to current millis()
+//		if (startTime == 0) {
+//			startTime = millis();
+//		}
+//		// Calculate the elapsed time in hours
+//		float elapsedTime = (millis() - startTime) / 3600000.0;
+//		// Calculate battery capacity in mAh
+//		float batteryCapacity = A_drawn * elapsedTime;
+//		// Check if battery capacity is below C_Stop
+//		if (batteryCapacity < C_Stop) {
+//			// Return battery capacity
+//			return batteryCapacity;
+//		}
+//		else {
+//			// If battery capacity is above C_Stop, reset startTime to zero and return zero
+//			startTime = 0;
+//			// Set flag to true when the Capacity stop point is reached.
+//			cflag = true;
+//			return 0;
+//		}
+//	}
+//	else {
+//		// If V_in is below V_Stop, reset startTime to zero and return zero
+//		startTime = 0;
+//		// Set flag and vFlag to true When Voltage stop point is reached.
+//		flag = true;
+//		vFlag = true;
+//		return 0;
+//	}
+//}
 
 float readTemp(int sensor) {
 	float val = analogRead(sensor);

@@ -124,7 +124,11 @@ byte A[] = {
 
 
 //Voltage Divider Restistor Values
-#define R11 68000
-#define R12 10000
-#define R2 10000
 
+#define R7 68000
+#define R8 10000
+#define R9 10000//Internal Voltage Sense
+
+#define R10 68000
+#define R11 10000
+#define R12 10000//External Voltage Sense
