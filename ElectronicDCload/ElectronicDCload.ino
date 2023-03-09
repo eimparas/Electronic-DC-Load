@@ -14,11 +14,18 @@ byte mac[6] = { 0x74, 0x69, 0x69, 0x2D, 0x30, 0x31 };
 #define modeButtons
 #define StartStopButtons
 
+#define Vmax 40
+#define Imax 20
+
+uint16_t t1 = 0, t2 = 0;
 int n;
 int encoderPinALast;
 short int EncoderPos = 00;
-double ConstantCurrent = 00.00;
-double multiplier = 1;
+int multiplier = 1;
+short int DAC1Point = 0;
+short int DAC2Point = 0;
+
+byte antiFlicker = 0;
 
 bool writeState = false;
 bool clearScreen = false;
@@ -28,9 +35,9 @@ bool extSense = false;
 bool isRuning = false;
 bool batteryMode = false;
 bool EthSetupStatus = false;
-int mode = 0;//CC default , CC:0, CV:1,CR:2,CP:3
+bool MCP = false;
 
-float CVoltageSet = 0.0;
+//float CVoltageSet = 0.0;
 
 float ADCVoltageFactor = 0;
 
@@ -58,10 +65,14 @@ struct batterySetPoint {
 	float CapLimit;
 } battPoints;
 
-enum SenseType {
-	InternalSense = 0,
-	ExternalSense = 1
-};
+struct loadReadings {
+	float Voltage;
+	float Current;
+	float Power;
+	float Resistance;
+	float WattHrs;
+	float AmpHrs;
+} Readings;
 
 enum operationMode {
 	CC,
@@ -97,12 +108,10 @@ SCPI_Parser my_instrument;
 EthernetServer server(5555);
 EthernetClient client;
 
-SenseType sense;//Initialize a enum for storing the source of the voltage measurement
 operationMode Mode;
 
 
 void setup() {
-	sense = InternalSense;//Default it to the internal 
 #ifdef DEBUG
     Serial.begin(115200);
     Serial.println("ImHere");
@@ -201,7 +210,7 @@ void setup() {
 	//Not setting an error handler will just ignore the errors.
 
 	
-	Ethernet.init(5); // initialize the Ethernet library
+	Ethernet.init(ETH_CS); // initialize the Ethernet library
 	if (Ethernet.linkStatus() == LinkON) { // check if cable is connected
 		Serial.println("Ethernet cable connected");
 		EthSetupStatus = true;
@@ -239,24 +248,36 @@ void setup() {
 	}//Ethernet Not connected.
 
 
-
+	calibrateACS();
     Serial.println("\n end of setup()");
 }
 
 void loop() {
+	if (batteryMode) t1 = millis();
 	/*readCurrent();
 	readVoltage();
 	CalcPower();
 	CalcResistance();*/
-	Serial.print(setPoints.Voltage);
+	Readings.Voltage = readVoltage();
+	Readings.Current = readCurrent();
+	if (batteryMode) {
+		Readings.Power = Readings.Voltage * Readings.Current;
+		Readings.AmpHrs += Readings.Current * (t2) / 3600000;
+		Readings.WattHrs += Readings.Power * (t2) / 3600000;
+	}
+	else {
+		Readings.Power = Readings.Voltage * Readings.Current;
+		Readings.Resistance = Readings.Voltage / Readings.Current;
+	}
+	Serial.print(t1);
 	Serial.print(",");
-	Serial.print(setPoints.Current);
+	Serial.print(t2);
 	Serial.print(",");
 	//Serial.print(SclearScreen);
 	Serial.print(",");
-	Serial.print(setPoints.Power);
+	Serial.print(Readings.AmpHrs);
 	Serial.print(",");
-	Serial.println(setPoints.Resistance);
+	Serial.println(Readings.WattHrs);
 
 	//===============================
 	//Diferent screens
@@ -274,9 +295,9 @@ void loop() {
 	else if (batteryMode) {
 		if (clearScreen) {
 			lcd.clear();
+			batteryModeLCD();
 			clearScreen = false;
 		}
-		batteryModeLCD(); 
 		updateBatteryMode();
 	}
 	else {
@@ -286,22 +307,139 @@ void loop() {
 		}
 		settingsLCD();
 	}
+	if (isRuning) {
+		runLoad();
+		Serial.print("DAC1:");
+		Serial.print(DAC1Point);
+		Serial.print(" DAC2:");
+		Serial.println(DAC2Point);
+	}
+	else
+	{
+		MCP1.writeDAC(0);
+		MCP2.writeDAC(0);
+		DAC1Point = 0;
+		DAC2Point = 0;
+	}
+	copyEncoder();
+
+	if (antiFlicker == 5) antiFlicker = 0;
+	antiFlicker++;
+//==========================================================
+//SCPI
+//==========================================================
+
+	client = server.available();
+	if (client.connected()) {
+		my_instrument.ProcessInput(client, "\r\n");//Ethercard.h was using \n termination 
+	};
+	if (batteryMode) t2 = millis() - t1;
+//delay(10);
+//End of Loop();
+
+	
+}
+
+void runLoad() {
 	if (!batteryMode) {
 		switch (Mode) {
 		case CC:
-			setPoints.Current += (EncoderPos * (multiplier / 100));
-			if (setPoints.Current < 0) {
-				setPoints.Current = 0;
+			if (setPoints.Current > Readings.Current) {
+				incrementDAC(1);
+			}
+			else {
+				decrementDAC(1);
 			}
 			break;
 		case CV:
-			setPoints.Voltage += (EncoderPos * (multiplier / 100));
-			if (setPoints.Voltage < 0) {
-				setPoints.Voltage = 0;
+			if (setPoints.Voltage < Readings.Voltage) {
+				incrementDAC(1);
+			}
+			else {
+				decrementDAC(1);
 			}
 			break;
 		case CP:
-			setPoints.Power += (EncoderPos * (multiplier / 100));
+			if (setPoints.Power > Readings.Power) {
+				incrementDAC(1);
+			}
+			else {
+				decrementDAC(1);
+			}
+			break;
+		case CR:
+			if (setPoints.Resistance < Readings.Resistance) {
+				incrementDAC(1);
+			}
+			else {
+				decrementDAC(1);
+			}
+			break;
+		}
+	}
+	else
+	{
+		if (battPoints.Current > Readings.Current) {
+			incrementDAC(1);
+		}
+		else {
+			decrementDAC(1);
+		}
+		if (battPoints.Vstop > Readings.Voltage) isRuning = false;
+	}
+	MCP1.writeDAC(DAC1Point);
+	MCP2.writeDAC(DAC2Point);
+}
+
+void incrementDAC(int val) {
+	if (MCP) {
+		DAC1Point += val;
+		if (DAC1Point > 4095) DAC1Point = 4095;
+		MCP = false;
+	}
+	else {
+		DAC2Point += val;
+		if (DAC2Point > 4095) DAC2Point = 4095;
+		MCP = true;
+	}
+}
+
+void decrementDAC(int val) {
+	if (!MCP) {
+		DAC1Point -= val;
+		if (DAC1Point < 0) DAC1Point = 0;
+		MCP = true;
+	}
+	else {
+		DAC2Point -= val;
+		if (DAC2Point < 0) DAC2Point = 0;
+		MCP = false;
+	}
+}
+
+void copyEncoder() {
+	if (!batteryMode) {
+		switch (Mode) {
+		case CC:
+			setPoints.Current += (EncoderPos * (multiplier / 100.0));
+			if (setPoints.Current < 0) {
+				setPoints.Current = 0;
+			}
+			if (setPoints.Current > Imax) {
+				setPoints.Current = Imax;
+			}
+			break;
+		case CV:
+			setPoints.Voltage += (EncoderPos * (multiplier / 100.0));
+			if (setPoints.Voltage < 0) {
+				setPoints.Voltage = 0;
+			}
+			if (setPoints.Voltage > Vmax) {
+				setPoints.Voltage = Vmax;
+			}
+			break;
+		case CP:
+			setPoints.Power += (EncoderPos * (multiplier / 100.0));
 			if (setPoints.Power < 0) {
 				setPoints.Power = 0;
 			}
@@ -315,21 +453,27 @@ void loop() {
 		}
 	}
 	else {
-		switch (mode) {
-		case 0:
-			battPoints.Current += (EncoderPos * (multiplier / 100));
+		switch (Mode) {
+		case CC:
+			battPoints.Current += (EncoderPos * (multiplier / 100.0));
 			if (battPoints.Current < 0) {
 				battPoints.Current = 0;
 			}
+			if (battPoints.Current > Imax) {
+				battPoints.Current = Imax;
+			}
 			break;
-		case 1:
-			battPoints.Vstop += (EncoderPos * (multiplier / 100));
+		case CV:
+			battPoints.Vstop += (EncoderPos * (multiplier / 100.0));
 			if (battPoints.Vstop < 0) {
 				battPoints.Vstop = 0;
 			}
+			if (battPoints.Vstop > Vmax) {
+				battPoints.Vstop = Vmax;
+			}
 			break;
-		case 2:
-			battPoints.CapLimit += (EncoderPos * (multiplier / 100));
+		case CP:
+			battPoints.CapLimit += (EncoderPos * (multiplier / 100.0));
 			if (battPoints.CapLimit < 0) {
 				battPoints.CapLimit = 0;
 			}
@@ -338,19 +482,6 @@ void loop() {
 		}
 	}
 	EncoderPos = 0;
-
-
-//==========================================================
-//SCPI
-//==========================================================
-
-	client = server.available();
-	if (client.connected()) {
-		my_instrument.ProcessInput(client, "\r\n");//Ethercard.h was using \n termination 
-	};
-
-//delay(10);
-//End of Loop();
 }
 
 //============================================================
@@ -413,14 +544,16 @@ void batteryModeLCD() {
 }
 
 void updateBatteryMode() {
-	lcd.setCursor(0, 0);
-	clearAndPrintFloat(abs(VoltExternal), 2);
-	lcd.setCursor(0, 1);
-	clearAndPrintFloat(abs(Current), 3);
-	lcd.setCursor(0, 2);
-	clearAndPrint4Float(abs(PowerExternal), 2 );
-	lcd.setCursor(0, 3);
-	clearAndPrint4Float(abs(RLoad), 0);
+	if (antiFlicker == 1) {
+		lcd.setCursor(0, 0);
+		clearAndPrintFloat(Readings.Voltage, 2);
+		lcd.setCursor(0, 1);
+		clearAndPrintFloat(Readings.Current, 3);
+		lcd.setCursor(0, 2);
+		clearAndPrint4Float(Readings.AmpHrs, 2);
+		lcd.setCursor(0, 3);
+		clearAndPrint4Float(Readings.WattHrs, 2);
+	}
 	lcd.setCursor(8, 0);
 
 	if (Mode == CV) {
@@ -480,38 +613,39 @@ void clearLCD() {
 }
 
 void updateLCD() {
-	lcd.setCursor(0, 0);
-	clearAndPrintFloat(abs( VoltExternal),2);
-	lcd.setCursor(0, 1);
-	clearAndPrintFloat(abs( Current),3);
-	lcd.setCursor(0, 2);
-	clearAndPrintFloat(abs(PowerExternal),3);
-	lcd.setCursor(0, 3);
-	clearAndPrintFloat(abs(RLoad),0);
+	if (antiFlicker == 1) {
+		lcd.setCursor(0, 0);
+		clearAndPrintFloat(Readings.Voltage, 2);
+		lcd.setCursor(0, 1);
+		clearAndPrintFloat(Readings.Current, 3);
+		lcd.setCursor(0, 2);
+		clearAndPrintFloat(Readings.Power, 3);
+		lcd.setCursor(0, 3);
+		clearAndPrintFloat(Readings.Resistance, 0);
+	}
 	lcd.setCursor(8, 0);
-
-	if (mode == 1) {
+	if (Mode == CV) {
 		clearAndPrintFloat(setPoints.Voltage, 2);
 	}
 	else {
 		lcd.print(" ---- ");
 	}
 	lcd.setCursor(8, 1);
-	if (mode == 0) {
+	if (Mode == CC) {
 		clearAndPrintFloat(setPoints.Current, 2);
 	}
 	else {
 		lcd.print(" ---- ");
 	}
 	lcd.setCursor(8, 2);
-	if (mode == 2) {
+	if (Mode == CP) {
 		clearAndPrintFloat(setPoints.Power, 2);
 	}
 	else {
 		lcd.print(" ---- ");
 	}
 	lcd.setCursor(8, 3);
-	if (mode == 3) {
+	if (Mode == CR) {
 		clearAndPrintFloat(setPoints.Resistance, 0);
 	}
 	else {
@@ -526,27 +660,27 @@ void updateLCD() {
 		lcd.print("STOP");
 	}
 	
-	switch (mode)
+	switch (Mode)
 	{
-		case 0:
+		case CC:
 			drawLCD();
 			lcd.setCursor(14, 1);
 			lcd.write(0);
 			//Serial.print("Mode: 0\n");
 			break;
-		case 1:
+		case CV:
 			drawLCD();
 			lcd.setCursor(14, 0);
 			lcd.write(1);
 			//Serial.print("Mode: 1\n");
 			break;
-		case 2:
+		case CP:
 			drawLCD();
 			lcd.setCursor(14, 2);
 			lcd.write(2);
 			//Serial.print("Mode: 2\n");
 			break;
-		case 3:
+		case CR:
 			drawLCD();
 			lcd.setCursor(14, 3);
 			lcd.write(3);
@@ -682,7 +816,7 @@ void encoderButtonISR() {
 			multiplier *= 100;
 		}
 		else {
-			multiplier = 1.0;
+			multiplier = 1;
 		}
 	}//If the instrument is at the main screen , the Encoder`s button 
 	// will opperate for seting the seting pressision. 
@@ -701,14 +835,14 @@ void CCbuttonISR() {
 	Serial.println("CC");
 	//mode = 0;
 	Mode = CC;
-	Serial.println(mode);
+	//Serial.println(mode);
 }
 
 void CVbuttonISR() {
 	Serial.println("CV");
 	//mode = 1;
 	Mode = CV;
-	Serial.println(mode);
+	//Serial.println(mode);
 }
 
 void CRbuttonISR() {
@@ -716,21 +850,21 @@ void CRbuttonISR() {
 	Serial.println("CR");
 	//mode = 3;
 	Mode = CR;
-	Serial.println(mode);
+	//Serial.println(mode);
 }
 
 void CPbuttonISR() {
 	Serial.println("CP");
 	//mode = 2;
 	Mode = CP;
-	Serial.println(mode);
+	//Serial.println(mode);
 }
 
 void batteryISR() {
 	Serial.println("BAT");
-	//mode = 0;
+	Mode = CC;
 	clearScreen = true;
-	Serial.println(mode);
+	//Serial.println(mode);
 	settingsButtonState = false;
 	if (batteryMode) {
 		batteryMode = false;
@@ -743,17 +877,6 @@ void batteryISR() {
 
 void startButtonISR() {
 	Serial.println("Start");
-
-	if (writeState == true)
-	{
-		ConstantCurrent = EncoderPos;
-
-	}
-
-	if (writeState == false)
-	{
-
-	}
 	Serial.println(writeState);
 	isRuning = true;
 }
@@ -792,19 +915,19 @@ void settingsISR() {
 //	VoltInternal = (VoltInternalRaw * (R11 + R12 + R2) / R2);
 //}
 
-float readVoltage(int Channel) {
+float readVoltage() {
 	float ADC = 0.0;	
-	ADC = ADS.readADC(Channel);	
+	ADC = (!extSense) ? ADS.readADC(0) : ADS.readADC(1);//Whyyy TIFOMI , WHYYYY
 	float VoltRaw = ADC * ADCVoltageFactor;
-	
-	
-	
-	if (Channel == InternalSense) {
-		return (VoltRaw * R9 / (R7 + R8 + R9));
-	}
+	if (VoltRaw < 0) VoltRaw = 0;
 
-	if (Channel == ExternalSense) {
-		return VoltRaw * R12 / (R10 + R11 + R12);
+	
+	
+	if (!extSense) {
+		return VoltRaw * (R7 + R8 + R9) /R9;
+	}
+    else {
+		return VoltRaw * (R10 + R11 + R12) / R12 ;
 	}
 }
 
@@ -819,12 +942,13 @@ float readCurrent() {
 	ACS1_A = (ACS1_offset - acs1Raw)/0.066;
 	ACS2_A = (ACS2_offset - acs2Raw)/0.066;
 	Current = ACS1_A + ACS2_A;
+	if (Current < 0.0001) Current = 0.0001;
 	return Current; //Crude , i will come back to this , its 2:20AM give me A brake
 }
 
 
 void CalcPower() {
-	PowerExternal = readVoltage(sense) * Current;
+	PowerExternal = readVoltage() * Current;
 }
 
 void CalcResistance() {
@@ -832,7 +956,7 @@ void CalcResistance() {
 		RLoad = 00.00;
 	}
 	else {
-		RLoad = abs(readVoltage(sense))/ abs(readCurrent());
+		RLoad = abs(readVoltage())/ abs(readCurrent());
 	}
 }
 
