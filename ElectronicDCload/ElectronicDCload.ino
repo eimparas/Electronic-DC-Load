@@ -1,3 +1,4 @@
+#include <PID_v1.h>
 #include <LiquidCrystal_I2C.h>
 #include <ADS1X15.h>
 #include <MCP4725.h>
@@ -244,20 +245,17 @@ void setup() {
 		lcd.print("Ehternet Not Connected");//Update the Splasscreen
 		delay(4000);
 		lcd.clear();
-		drawLCD();//Clean and contineew to the normal flow of the program
+		drawLCD();//Clean and continue to the normal flow of the program
 	}//Ethernet Not connected.
 
 
 	calibrateACS();
     Serial.println("\n end of setup()");
+
 }
 
 void loop() {
 	if (batteryMode) t1 = millis();
-	/*readCurrent();
-	readVoltage();
-	CalcPower();
-	CalcResistance();*/
 	Readings.Voltage = readVoltage();
 	Readings.Current = readCurrent();
 	if (batteryMode) {
@@ -269,15 +267,15 @@ void loop() {
 		Readings.Power = Readings.Voltage * Readings.Current;
 		Readings.Resistance = Readings.Voltage / Readings.Current;
 	}
-	Serial.print(t1);
-	Serial.print(",");
-	Serial.print(t2);
-	Serial.print(",");
-	//Serial.print(SclearScreen);
-	Serial.print(",");
-	Serial.print(Readings.AmpHrs);
-	Serial.print(",");
-	Serial.println(Readings.WattHrs);
+	//Serial.print(t1);
+	//Serial.print(",");
+	//Serial.print(t2);
+	//Serial.print(",");
+	////Serial.print(SclearScreen);
+	//Serial.print(",");
+	//Serial.print(Readings.AmpHrs);
+	//Serial.print(",");
+	//Serial.println(Readings.WattHrs);
 
 	//===============================
 	//Diferent screens
@@ -334,10 +332,7 @@ void loop() {
 		my_instrument.ProcessInput(client, "\r\n");//Ethercard.h was using \n termination 
 	};
 	if (batteryMode) t2 = millis() - t1;
-//delay(10);
-//End of Loop();
-
-	
+//End of Loop();	
 }
 
 void runLoad() {
@@ -345,7 +340,7 @@ void runLoad() {
 		switch (Mode) {
 		case CC:
 			if (setPoints.Current > Readings.Current) {
-				incrementDAC(1);
+				incrementDAC(setPoints.Current - Readings.Current);
 			}
 			else {
 				decrementDAC(1);
@@ -387,21 +382,36 @@ void runLoad() {
 		}
 		if (battPoints.Vstop > Readings.Voltage) isRuning = false;
 	}
-	MCP1.writeDAC(DAC1Point);
-	MCP2.writeDAC(DAC2Point);
+
 }
 
-void incrementDAC(int val) {
-	if (MCP) {
-		DAC1Point += val;
-		if (DAC1Point > 4095) DAC1Point = 4095;
-		MCP = false;
+void incrementDAC(float diff) {
+	int val;
+	if (diff > 1) {
+		val = 100;
+	}
+	else if (diff > 0.1){
+		val = 10;
 	}
 	else {
-		DAC2Point += val;
-		if (DAC2Point > 4095) DAC2Point = 4095;
-		MCP = true;
+		val = 1;
 	}
+	while (val != 0) {
+		if (MCP) {
+			DAC1Point += 1;
+			if (DAC1Point > 4095) DAC1Point = 4095;
+			MCP = false;
+		}
+		else {
+			DAC2Point += 1;
+			if (DAC2Point > 4095) DAC2Point = 4095;
+			MCP = true;
+		}
+		val--;
+	}
+	MCP1.writeDAC(DAC1Point);
+	MCP2.writeDAC(DAC2Point);
+	
 }
 
 void decrementDAC(int val) {
@@ -415,6 +425,8 @@ void decrementDAC(int val) {
 		if (DAC2Point < 0) DAC2Point = 0;
 		MCP = false;
 	}
+	MCP1.writeDAC(DAC1Point);
+	MCP2.writeDAC(DAC2Point);
 }
 
 void copyEncoder() {
@@ -743,7 +755,6 @@ void clearAndPrint4Float(float num, int digits) {
 }
 
 void splashScreen() {
-
 	lcd.clear();
 	lcd.setCursor(0, 0);
 	lcd.print("Electronic DC load");
