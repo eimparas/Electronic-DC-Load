@@ -1,25 +1,35 @@
-#include "Arduino.h"
-#include "EtherCard.h"
-#include "Vrekrer_scpi_parser.h"
+#include <Vrekrer_scpi_parser.h>
+#include <SPI.h>
+#include <EthernetENC.h>
 
-
-const static byte dns[] = { 0, 0, 0, 0 };
-const static byte mask[] = { 255, 255, 255, 0 };
+//const static byte dns[] = { 0, 0, 0, 0 };
 byte mac[6] = { 0x74, 0x69, 0x69, 0x2D, 0x30, 0x31 };
-byte ip[4] = { 192, 168, 10, 7 };
-byte gw[4] = { 192, 168, 10, 1 };
-byte Ethernet::buffer[768];
 
-const byte csPin = 2; //ChipSelect Pin
+
+const byte csPin = 5; //ChipSelect Pin
 
 SCPI_Parser my_instrument;
+EthernetServer server(5555);
+EthernetClient client;
+
 boolean fromSerial = true;
 
 void setup() {
     Serial.begin(9600);
     while (!Serial);
+	
+	
+	
+	
     my_instrument.RegisterCommand("*IDN?", &Identify);
-    my_instrument.SetCommandTreeBase("MEASure");
+	my_instrument.SetCommandTreeBase(F("SYSTem"));
+	my_instrument.RegisterCommand(F("TEMPerature?"), &GetTemperature);	
+    my_instrument.RegisterCommand(F("ERRor?"), &GetLastEror);
+	//Reset the command tree base to the root level
+	my_instrument.SetCommandTreeBase("");
+    my_instrument.SetErrorHandler(&myErrorHandler);
+    /*
+	my_instrument.SetCommandTreeBase("MEASure");
     my_instrument.RegisterCommand(":VOLTage?", &SetIP);
     my_instrument.RegisterCommand(":CURRent?", &GetIP);
     my_instrument.RegisterCommand(":POWEr?", &SetGW);
@@ -27,115 +37,268 @@ void setup() {
     my_instrument.RegisterCommand(":VOLTage?", &SetIP);
     my_instrument.RegisterCommand(":CURRent?", &GetIP);
     my_instrument.RegisterCommand(":POWEr?", &SetGW);
-    
-    ether.hisport = 5025; //SCPI PORT
+    ======
+	my_instrument.SetCommandTreeBase(F("SOURce"));
+		my_instrument.RegisterCommand(F(":VOLTage:VLIMt"), &SetVoltageLimit);
+		my_instrument.RegisterCommand(F(":VOLTage:VLIMt?"), &GetVoltageLimit);
+		my_instrument.RegisterCommand(F(":CURRent:ILIMt"), &SetCurrentLimit);
+		my_instrument.RegisterCommand(F(":CURRent:ILIMt?"), &GetCurrentLimit);
+		my_instrument.RegisterCommand(F(":RESistance:RLIMt"), &SetResistanceLimit);
+		my_instrument.RegisterCommand(F(":RESistance:RLIMt?"), &GetResistanceLimit);
+		my_instrument.RegisterCommand(F(":POWer:PLIMt"), &SetPowerLimit);
+		my_instrument.RegisterCommand(F(":POWer:PLIMt?"), &GetPowerLimit);
+		my_instrument.RegisterCommand(F(":INPut:STATe"), &SetInputState);
+		my_instrument.RegisterCommand(F(":INPut:STATe?"), &GetInputState);
+		my_instrument.RegisterCommand(F(":LIST:MODE"), &SetListMode);
+		my_instrument.RegisterCommand(F(":LIST:MODE?"), &GetListMode);
+	my_instrument.SetCommandTreeBase("");
+	
+	my_instrument.SetCommandTreeBase(F("MEASure"));
+		my_instrument.RegisterCommand(F(":VOLTage:DC?"), &GetVoltageDC);
+		my_instrument.RegisterCommand(F(":CURRent:DC?"), &GetCurrentDC);
+		my_instrument.RegisterCommand(F(":POWer:DC?"), &GetPowerDC);
+		my_instrument.RegisterCommand(F(":RESistance:DC?"), &GetResistanceDC);
+						
+		my_instrument.RegisterCommand(F(":CAPability?"), &GetCapability);
+		my_instrument.RegisterCommand(F(":WATThours?"), &GetWattHours);
+		my_instrument.RegisterCommand(F(":DISChargingTime?"), &GetDischargingTime);
+	my_instrument.SetCommandTreeBase("");
+	*/
+	
+	// Set up the parent command node for source-related commands
+	my_instrument.SetCommandTreeBase(F("SOURce"));
+		// Register commands for setting and requesting voltage, current, power, and resistance
+		my_instrument.RegisterCommand(F("VOLTage:DC"), &SetCVpoint);		
+		my_instrument.RegisterCommand(F("VOLTage:DC?"), &GetCVpoint);
 
-    boolean eth_enabled = false;
-    if (ether.begin(sizeof Ethernet::buffer, mac, csPin))
-        eth_enabled = ether.staticSetup(ip, gw, dns, mask);
-    if (!eth_enabled) ether.powerDown();
+		my_instrument.RegisterCommand(F("CURRent:DC"), &SetCCpoint);
+		my_instrument.RegisterCommand(F("CURRent:DC?"), &GetCCpoint);
+
+		my_instrument.RegisterCommand(F("POWer:DC"), &SetCPpoint);
+		my_instrument.RegisterCommand(F("POWer:DC?"), &GetCPpoint);
+
+		my_instrument.RegisterCommand(F("RESistance:DC"), &SetCRpoint);
+		my_instrument.RegisterCommand(F("RESistance:DC?"), &GetCRpoint);
+
+		 //Register command for starting/stopping the load
+		my_instrument.RegisterCommand(F("INPut:STATe"), &SetLoadState);
+		my_instrument.RegisterCommand(F("INPut:STATe?"), &GetLoadState);
+
+		 //Register command for setting the working mode
+		my_instrument.RegisterCommand(F("LIST:MODE"), &SetWorkingMode);
+        my_instrument.RegisterCommand(F("LIST:MODE?"), &GetWorkingMode);
+
+		 //Register commands for setting and requesting current and voltage limits
+		my_instrument.RegisterCommand(F("VOLTage:VLIMt?"), &GetVoltageLimit);
+		my_instrument.RegisterCommand(F("VOLTage:VLIMt"), &SetVoltageLimit);
+		
+		my_instrument.RegisterCommand(F("CURRent:ILIMt?"), &GetCurrentLimit);
+		my_instrument.RegisterCommand(F("CURRent:ILIMt"), &SetCurrentLimit);
+	//Reset the command tree base to the root level
+	my_instrument.SetCommandTreeBase("");
+
+     //Set up the parent command node for ADC measurement commands
+    my_instrument.SetCommandTreeBase(F("MEASure"));
+		//Register commands for requesting voltage, current, resistance, and power measurements
+		my_instrument.RegisterCommand(F("VOLTage:DC?"), &GetVoltage);
+		my_instrument.RegisterCommand(F("CURRent:DC?"), &GetCurrent);
+		//my_instrument.RegisterCommand(F("RESistance:DC?"), &GetResistance);//Crashes the arduino when i enable this
+		//my_instrument.RegisterCommand(F("POWer:DC?"), &GetPower);//arduino not replying to anything when i open this 
+
+		//(Communication timeout error)
+
+	//my_instrument.RegisterCommand(F(":CAPability?"), &GetAhours);
+	//my_instrument.RegisterCommand(F(":WATThours?"), &GetWattHours);
+
+	//	//Register command for requesting discharge time measurement
+	//	my_instrument.RegisterCommand(F("DISChargingTime?"), &GetDischargeTime);
+	
+ //    //Reset the command tree base to the root level
+    my_instrument.SetCommandTreeBase("");
+
+	
+
+
+Ethernet.init(csPin); // initialize the Ethernet library
+	if (Ethernet.linkStatus() == LinkON) { // check if cable is connected
+		Serial.println("Ethernet cable connected");		
+		if (Ethernet.begin(mac) == 0) { // start DHCP
+			Serial.println("Failed to get IP address using DHCP");
+			// you can also assign a static IP address if DHCP fails, see the Ethernet library examples			
+		}//FailedDHCP loop (consider a hardcoded fallback Static?
+		else
+		{
+			Serial.print("IP address: ");
+			Serial.println(Ethernet.localIP());
+			server.begin(); // start the server
+			Serial.print("Server is at ");
+			Serial.println(Ethernet.localIP()); // print the server IP address to the serial monitor			
+		}//Got address from DHCP
+	}
+	else {
+		Serial.println("Ethernet cable disconnected");
+	}//Ethernet Not connected.
+    
 }
 
 void loop() {
-    fromSerial = true;
-    my_instrument.ProcessInput(Serial, "\n");
+	fromSerial = true;
+	my_instrument.ProcessInput(Serial, "\n");
 
-    if (ether.isLinkUp()) {
-        fromSerial = false;
-        my_instrument.Execute(GetEthMsg(), Serial);
-    }
+	client = server.available();
+	if (client.connected()) {
+		my_instrument.ProcessInput(client, "\r\n"); //Ethercard.h was using \n termination 
+	};
 }
+
+
 /* SCPI FUNCTIONS */
 
 void Identify(SCPI_C commands, SCPI_P parameters, Stream& interface) {
-    char IDN[] = "Vrekrer,SCPI Ethernet Instrument,#00,v0.4.2\n";
-    PrintToInterface(IDN);
+  interface.println(F("Vrekrer,SCPI Error Handling Example,#00,v0.4.2"));
 }
 
-void SetIP(SCPI_C commands, SCPI_P parameters, Stream& interface) {
-    //SaveIP(parameters.First(), eeprom_eth_data_start + 7);
+
+void GetCVpoint(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+	float voltage = 10.062;
+	
+	interface.println(voltage,2);
 }
 
-void GetIP(SCPI_C commands, SCPI_P parameters, Stream& interface) {
-    char ip_str[16];
-    IpToString(ether.myip, ip_str);
-    PrintToInterface(ip_str);
+void SetCVpoint(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+	//Here we print the recieved commands.
+	for (size_t i = 0; i < commands.Size(); i++) {
+		Serial.print(commands[i]);
+		if (i < commands.Size() - 1) {
+			Serial.print(":");
+		}
+		else {
+			Serial.print(" ");
+		}
+	}
+	Serial.println("Recived Params:");
+	//Here we print the recieved parameters.
+	for (size_t i = 0; i < parameters.Size(); i++) {
+		Serial.print(parameters[i]);
+		if (i < parameters.Size() - 1)
+			Serial.print(", ");
+	}
+	Serial.println("Recived CMD:");
 }
 
-void SetGW(SCPI_C commands, SCPI_P parameters, Stream& interface) {
-   // SaveIP(parameters.First(), eeprom_eth_data_start + 11);
+void GetCCpoint(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
 }
 
-void GetGW(SCPI_C commands, SCPI_P parameters, Stream& interface) {
-    char ip_str[16];
-    IpToString(ether.gwip, ip_str);
-    PrintToInterface(ip_str);
+void SetCCpoint(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
 }
 
-void SetMAC(SCPI_C commands, SCPI_P parameters, Stream& interface) {
-    int this_mac[6];
-    int mac_ok = 0;
-    if (parameters.Size() == 6) {
-        for (uint8_t i = 0; i < 6; i++) {
-            mac_ok += sscanf(parameters[i], "%x", &this_mac[i]);
-        }
-    }
-   
+void GetCPpoint(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
 }
 
-void GetMAC(SCPI_C commands, SCPI_P parameters, Stream& interface) {
-    char mac_str[] = "0x##, 0x##, 0x##, 0x##, 0x##, 0x##\n";
-    for (int i = 0; i < 6; ++i) {
-        char u = ether.mymac[i] / 16;
-        char l = ether.mymac[i] % 16;
-        mac_str[6 * i + 2] = u < 10 ? u + '0' : u + 'A' - 10;
-        mac_str[6 * i + 3] = l < 10 ? l + '0' : l + 'A' - 10;
-    }
-    PrintToInterface(mac_str);
+void SetCPpoint(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
 }
 
+void GetCRpoint(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void SetCRpoint(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void SetLoadState(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void GetLoadState(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void SetWorkingMode(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void GetWorkingMode(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void SetVoltageLimit(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void GetVoltageLimit(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void SetCurrentLimit(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void GetCurrentLimit(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void GetVoltage(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+void GetCurrent(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+void GetPower(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+void GetResistance(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void GetTemperature(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+
+}
+
+void GetLastEror(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+	switch (my_instrument.last_error) {
+	case my_instrument.ErrorCode::BufferOverflow:
+		interface.println(F("Buffer overflow error"));
+		break;
+	case my_instrument.ErrorCode::Timeout:
+		interface.println(F("Communication timeout error"));
+		break;
+	case my_instrument.ErrorCode::UnknownCommand:
+		interface.println(F("Unknown command received"));
+		break;
+	case my_instrument.ErrorCode::NoError:
+		interface.println(F("No Error"));
+		break;
+	}
+	my_instrument.last_error = my_instrument.ErrorCode::NoError;
+}
+
+void myErrorHandler(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+	//This function is called every time an error occurs
+
+	/* The error type is stored in my_instrument.last_error
+	   Possible errors are:
+		 SCPI_Parser::ErrorCode::NoError
+		 SCPI_Parser::ErrorCode::UnknownCommand
+		 SCPI_Parser::ErrorCode::Timeout
+		 SCPI_Parser::ErrorCode::BufferOverflow
+	*/
+
+	/* For BufferOverflow errors, the rest of the message, still in the interface
+	buffer or not yet received, will be processed later and probably
+	trigger another kind of error.
+	Here we flush the incomming message*/
+	if (my_instrument.last_error == SCPI_Parser::ErrorCode::BufferOverflow) {
+		delay(2);
+		while (interface.available()) {
+			delay(2);
+			interface.read();
+		}
+	}
+}
 
 /* HELPER FUNCTIONS */
-
-char* GetEthMsg() {
-    word pos = ether.packetLoop(ether.packetReceive());
-    if (pos) {
-        ether.httpServerReplyAck();
-        char* msg = Ethernet::buffer + pos;
-        msg = strtok(msg, "\n"); //Remove termination char
-        return msg;
-    }
-    else {
-        return NULL;
-    }
-}
-
-void WriteEthMsg(char* msg) {
-    delayMicroseconds(20); //Delay needed for next package
-    BufferFiller bfill = ether.tcpOffset();
-    bfill.emit_raw(msg, strlen(msg));
-    ether.httpServerReply_with_flags(bfill.position(), TCP_FLAGS_ACK_V | TCP_FLAGS_PUSH_V);
-}
-
-void PrintToInterface(char* print_str) {
-    if (fromSerial)
-        Serial.write(print_str, strlen(print_str));
-    else
-        WriteEthMsg(print_str);
-}
-
-void SaveIP(char* ip_str, int eeprom_address) {
-    int this_ip[4];
-    int ipOk = sscanf(ip_str, "%d.%d.%d.%d", &this_ip[0], &this_ip[1], &this_ip[2], &this_ip[3]);
-    if (ipOk == 4) {
-        for (uint8_t i = 0; i < 4; i++) {
-            
-            ++eeprom_address;
-        }
-    }
-}
-
-void IpToString(byte* IP, char* ip_str) {
-    sprintf(ip_str, "%d.%d.%d.%d\n", IP[0], IP[1], IP[2], IP[3]);
-    //return ip_str;
-}
