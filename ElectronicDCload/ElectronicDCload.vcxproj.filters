@@ -16,6 +16,15 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="ElectronicDCload.ino" />
+    <None Include="SupportFunctions.ino">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="SCPIFunctions.ino">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="InteruptServiceRoutines.ino">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="__vm\.ElectronicDCload.vsarduino.h">
@@ -24,5 +33,10 @@
     <ClInclude Include="pinout.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="LCDSupportFunctions.ino">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
