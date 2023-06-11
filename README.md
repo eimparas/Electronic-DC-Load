@@ -9,5 +9,6 @@ A usefull tool for testing Power supply stability and regulation , Battery capac
 
 * Max Vin : 40V
 * Max Current consumtion ≃ 20A
-* Temperature controled Fan
-* emergency stop button
+* SCPI compatible 
+* Battery Testing
+
