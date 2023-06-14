@@ -3,12 +3,37 @@
 # Digital DC Load
 A Arduino controled Dc load for PSU testing ,battery characterization.
 
+[img]
+
 A usefull tool for testing Power supply stability and regulation , Battery capacity and discharge rate. 
 
-## Specifications 
+## Specifications overview
 
 * Max Vin : 40V
 * Max Current consumtion ≃ 20A
+* Power disipation 
 * SCPI compatible 
-* Battery Testing
+* Battery test function
 
+
+<br/>
+
+* single channel, DC150 V/60 A, total power up to 350 W
+* Adjustable current rising speed: _X_ A/μs to _Y_ A/μs
+* Min. readback resolution: 0.1 mV，0.1 mA
+* Overvoltage/overcurrent/overpower/overtemperature protection
+* 4 static modes: CC, CV, CR, CP
+* Built-in LXI/LAN communication interface
+
+
+## Limitations
+It cannot perfom any transient event tests. The cuntrol algorythm utilized results in a low  slew rate that does not allow any dynamic modes like pulsed, toggled or current spikes . 
+
+
+
+
+# License
+The Hardware design files Of the Electronic DC load  are released under the [CERN-OHL-W Version 2.0](https://ohwr.org/cern_ohl_w_v2.txt) License.<br/>
+All the source codes in this repository are released under the terms of the [GNU General Public License v3.0 License](https://github.com/finos2/Electronic-DC-Load/blob/main/LICENSE). 
+### Disclamer 
+ The datasheets included in this repository are for reference purposes only. All rights belong to their original creators, and we do not plan copyright infringement.
