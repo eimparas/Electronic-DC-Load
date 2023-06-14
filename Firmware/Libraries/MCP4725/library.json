@@ -1,0 +1,23 @@
+{
+  "name": "MCP4725",
+  "keywords": "MCP4725,DAC,digital,analog,convertor,percentage",
+  "description": "Arduino library for 12 bit I2C DAC - MCP4725",
+  "authors":
+  [
+    {
+      "name": "Rob Tillaart",
+      "email": "Rob.Tillaart@gmail.com",
+      "maintainer": true
+    }
+  ],
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/RobTillaart/MCP4725.git"
+  },
+  "version": "0.3.5",
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "*",
+  "headers": "MCP4725.h"
+}
