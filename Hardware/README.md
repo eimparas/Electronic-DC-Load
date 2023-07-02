@@ -4,7 +4,7 @@
 ## Analog Power Frontend
 > Where the "work" happens
 
-![Frontend](/img/Analog_Power_Schematic.png)
+![Frontend](/IMG/Analog_Power_Schematic.png)
 
 ## Digital Control 
 > adding the logic
